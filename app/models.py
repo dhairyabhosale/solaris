@@ -31,11 +31,21 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class ScheduleStep(BaseModel):
+    time: str  # "HH:MM", 24-hour
+    action: str
+    detail: str
+
+
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
     risk_level: str  # "low" | "moderate" | "high" | "extreme" | "unknown"
     escalate: bool
+    schedule: Optional[list[ScheduleStep]] = None
+    temperature_c: Optional[float] = None
+    feels_like_c: Optional[float] = None
+    humidity_pct: Optional[int] = None
 
 
 class ChatTurn(BaseModel):
@@ -48,4 +58,9 @@ class WorkerStatus(BaseModel):
     profile: Optional[WorkerProfile] = None
     session_id: Optional[str] = None
     risk_level: Optional[str] = None
+    schedule: Optional[list[ScheduleStep]] = None
+    acknowledged: bool = False
+    temperature_c: Optional[float] = None
+    feels_like_c: Optional[float] = None
+    humidity_pct: Optional[int] = None
     history: list[ChatTurn] = []

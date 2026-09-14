@@ -16,6 +16,9 @@ from app.services import kv
 _WORKERS: dict[str, WorkerProfile] = {}
 _CONVERSATIONS: dict[str, list[dict]] = {}
 _RISK_LEVELS: dict[str, str] = {}
+_SCHEDULES: dict[str, list[dict]] = {}
+_ACKNOWLEDGED: dict[str, bool] = {}
+_WEATHER: dict[str, dict] = {}
 
 _USE_KV = kv.is_configured()
 
@@ -66,3 +69,42 @@ async def set_risk_level(session_id: str, risk_level: str) -> None:
         await kv.set_json(f"risk:{session_id}", risk_level)
     else:
         _RISK_LEVELS[session_id] = risk_level
+
+
+async def get_schedule(session_id: str) -> Optional[list[dict]]:
+    if _USE_KV:
+        return await kv.get_json(f"schedule:{session_id}")
+    return _SCHEDULES.get(session_id)
+
+
+async def set_schedule(session_id: str, schedule: list[dict]) -> None:
+    if _USE_KV:
+        await kv.set_json(f"schedule:{session_id}", schedule)
+    else:
+        _SCHEDULES[session_id] = schedule
+
+
+async def get_acknowledged(session_id: str) -> bool:
+    if _USE_KV:
+        return bool(await kv.get_json(f"ack:{session_id}"))
+    return _ACKNOWLEDGED.get(session_id, False)
+
+
+async def set_acknowledged(session_id: str, acknowledged: bool) -> None:
+    if _USE_KV:
+        await kv.set_json(f"ack:{session_id}", acknowledged)
+    else:
+        _ACKNOWLEDGED[session_id] = acknowledged
+
+
+async def get_weather(session_id: str) -> Optional[dict]:
+    if _USE_KV:
+        return await kv.get_json(f"weather:{session_id}")
+    return _WEATHER.get(session_id)
+
+
+async def set_weather(session_id: str, weather: dict) -> None:
+    if _USE_KV:
+        await kv.set_json(f"weather:{session_id}", weather)
+    else:
+        _WEATHER[session_id] = weather

@@ -3,19 +3,28 @@ Sends a fixed battery of onboarding + conversation scenarios through the
 running Solaris API, so the exact same inputs can be replayed before and
 after a PRISM-driven fix and compared trace-for-trace.
 
-Each scenario uses its own worker_id, so each run gets a fresh
-"<worker_id>:<today>" session_id in PRISM - look up scenario-* sessions
-there to inspect and compare traces.
+session_id is "<worker_id>:<today>" - running this script twice on the
+same day with the same worker_id would land both runs in the SAME PRISM
+session, so the "after" run would see the "before" run's messages as
+prior conversation history and the comparison would be contaminated.
+--label appends a suffix to every worker_id to keep runs separate
+(e.g. --label baseline, --label after-fix).
 
 Usage:
-    uvicorn app.main:app --reload          # in one terminal
-    python scripts/run_scenarios.py        # in another
+    uvicorn app.main:app --reload                       # in one terminal
+    python scripts/run_scenarios.py --label baseline     # in another
 """
 
 import argparse
+import sys
 import time
 
 import httpx
+
+# Windows consoles default to cp1252, which can't encode characters some
+# models use (non-breaking hyphens, smart quotes, degree signs, etc.).
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
 
 SCENARIOS = [
     {
@@ -60,10 +69,11 @@ SCENARIOS = [
 ]
 
 
-def run(base_url: str) -> None:
+def run(base_url: str, label: str = "") -> None:
+    suffix = f"-{label}" if label else ""
     with httpx.Client(base_url=base_url, timeout=30) as client:
         for scenario in SCENARIOS:
-            worker_id = scenario["worker_id"]
+            worker_id = scenario["worker_id"] + suffix
             print(f"\n=== {worker_id} ===")
 
             resp = client.post("/onboarding", json={"worker_id": worker_id, **scenario["onboarding"]})
@@ -83,8 +93,11 @@ def run(base_url: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument(
+        "--label", default="", help="Appended to each worker_id to keep repeated runs in separate PRISM sessions"
+    )
     args = parser.parse_args()
-    run(args.base_url)
+    run(args.base_url, args.label)
 
 
 if __name__ == "__main__":

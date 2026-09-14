@@ -38,5 +38,9 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+def local_now() -> datetime:
+    return datetime.now(ZoneInfo(settings.app_timezone))
+
+
 def local_today() -> date:
-    return datetime.now(ZoneInfo(settings.app_timezone)).date()
+    return local_now().date()

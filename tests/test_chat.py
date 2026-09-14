@@ -56,6 +56,7 @@ def test_chat_returns_reply(monkeypatch):
             "risk_level": "high",
             "escalate": False,
             "message": "Take a 10-min shaded break every 45 minutes and drink 250ml water each break.",
+            "schedule": [{"time": "09:00", "action": "Break", "detail": "10 min shade, 250ml water"}],
         }
 
     monkeypatch.setattr(chat_route.weather, "get_current_weather", fake_weather)
@@ -68,6 +69,9 @@ def test_chat_returns_reply(monkeypatch):
     assert body["escalate"] is False
     assert "shaded break" in body["reply"]
     assert body["session_id"].startswith("worker-2:")
+    assert body["schedule"] == [{"time": "09:00", "action": "Break", "detail": "10 min shade, 250ml water"}]
+    assert body["temperature_c"] == 38.0
+    assert body["humidity_pct"] == 55
 
 
 def test_chat_caches_risk_level_across_turns(monkeypatch):
@@ -93,11 +97,18 @@ def test_chat_caches_risk_level_across_turns(monkeypatch):
 
     calls = {"n": 0}
 
+    schedule_v1 = [{"time": "09:00", "action": "Break", "detail": "15 min shade"}]
+
     async def fake_ask(**kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            return {"risk_level": "extreme", "escalate": False, "message": "First message."}
-        return {"risk_level": None, "escalate": False, "message": "Follow-up without a fresh risk_level."}
+            return {"risk_level": "extreme", "escalate": False, "message": "First message.", "schedule": schedule_v1}
+        return {
+            "risk_level": None,
+            "escalate": False,
+            "message": "Follow-up without a fresh risk_level.",
+            "schedule": None,
+        }
 
     monkeypatch.setattr(chat_route.weather, "get_current_weather", fake_weather)
     monkeypatch.setattr(chat_route.llm, "ask", fake_ask)
@@ -107,6 +118,9 @@ def test_chat_caches_risk_level_across_turns(monkeypatch):
 
     assert first.json()["risk_level"] == "extreme"
     assert second.json()["risk_level"] == "extreme"
+    # No fresh schedule on turn 2 - the route should keep serving the last real one.
+    assert first.json()["schedule"] == schedule_v1
+    assert second.json()["schedule"] == schedule_v1
 
 
 def test_chat_returns_503_with_readable_detail_when_llm_unavailable(monkeypatch):
@@ -148,3 +162,80 @@ def test_chat_returns_502_when_weather_service_is_down(monkeypatch):
     resp = client.post("/chat", json={"worker_id": "worker-weather-down", "message": "Hello"})
     assert resp.status_code == 502
     assert "weather" in resp.json()["detail"]
+
+
+def test_acknowledge_requires_onboarding():
+    resp = client.post("/worker/never-onboarded/acknowledge")
+    assert resp.status_code == 404
+
+
+def test_acknowledge_sets_flag_and_status_reflects_it(monkeypatch):
+    _onboard("worker-ack")
+
+    async def fake_ask(**kwargs):
+        return {
+            "risk_level": "moderate",
+            "escalate": False,
+            "message": "Plan for today.",
+            "schedule": [{"time": "09:00", "action": "Break", "detail": "15 min shade"}],
+        }
+
+    monkeypatch.setattr(chat_route.weather, "get_current_weather", _fake_weather)
+    monkeypatch.setattr(chat_route.llm, "ask", fake_ask)
+    client.post("/chat", json={"worker_id": "worker-ack", "message": "Checking in"})
+
+    before = client.get("/worker/worker-ack/status").json()
+    assert before["acknowledged"] is False
+
+    ack_resp = client.post("/worker/worker-ack/acknowledge")
+    assert ack_resp.status_code == 200
+    assert ack_resp.json() == {"acknowledged": True}
+
+    after = client.get("/worker/worker-ack/status").json()
+    assert after["acknowledged"] is True
+
+
+def test_new_schedule_resets_acknowledged_flag(monkeypatch):
+    _onboard("worker-ack-reset")
+    monkeypatch.setattr(chat_route.weather, "get_current_weather", _fake_weather)
+
+    async def first_ask(**kwargs):
+        return {
+            "risk_level": "high",
+            "escalate": False,
+            "message": "Plan v1.",
+            "schedule": [{"time": "09:00", "action": "Break", "detail": "15 min"}],
+        }
+
+    monkeypatch.setattr(chat_route.llm, "ask", first_ask)
+    client.post("/chat", json={"worker_id": "worker-ack-reset", "message": "Checking in"})
+    client.post("/worker/worker-ack-reset/acknowledge")
+    assert client.get("/worker/worker-ack-reset/status").json()["acknowledged"] is True
+
+    async def revised_ask(**kwargs):
+        return {
+            "risk_level": "high",
+            "escalate": False,
+            "message": "Plan v2, revised.",
+            "schedule": [{"time": "09:30", "action": "Break", "detail": "20 min"}],
+        }
+
+    monkeypatch.setattr(chat_route.llm, "ask", revised_ask)
+    client.post("/chat", json={"worker_id": "worker-ack-reset", "message": "Can't break right now"})
+
+    assert client.get("/worker/worker-ack-reset/status").json()["acknowledged"] is False
+
+
+def test_status_returns_cached_weather_after_chat(monkeypatch):
+    _onboard("worker-weather-status")
+
+    async def fake_ask(**kwargs):
+        return {"risk_level": "low", "escalate": False, "message": "All good.", "schedule": None}
+
+    monkeypatch.setattr(chat_route.weather, "get_current_weather", _fake_weather)
+    monkeypatch.setattr(chat_route.llm, "ask", fake_ask)
+    client.post("/chat", json={"worker_id": "worker-weather-status", "message": "Checking in"})
+
+    status = client.get("/worker/worker-weather-status/status").json()
+    assert status["temperature_c"] == 36.0
+    assert status["humidity_pct"] == 50
