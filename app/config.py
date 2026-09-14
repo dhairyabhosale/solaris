@@ -15,10 +15,14 @@ class Settings(BaseSettings):
     # https://console.groq.com/docs/rate-limits before changing this.
     groq_model: str = "openai/gpt-oss-120b"
 
-    prism_enabled: bool = False
-    prism_api_key: str = ""
-    prism_project_id: str = ""
-    prism_proxy_url: str = ""
+    # PRISM (Block Convey) live tracing - from prism.blockconvey.com/onboarding.
+    # Empty api_key means "not configured": chat_completion() skips trace
+    # delivery entirely, the app works the same either way. This is a
+    # side-channel trace POST after each model call, not a proxy the call
+    # itself routes through (that was an earlier, pre-onboarding guess).
+    prismtrace_api_key: str = ""
+    prismtrace_project_id: str = ""
+    prismtrace_host: str = "https://prism-api-prod.up.railway.app"
 
     # Redis connection string - the Vercel "Redis by Redis" marketplace
     # integration injects this automatically once connected to the

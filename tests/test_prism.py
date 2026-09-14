@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 
+import httpx
 import httpx2
 import pytest
 
@@ -10,8 +11,33 @@ from app.services.prism import AGENT_ID, LLMUnavailable, _parse_duration_seconds
 
 
 @pytest.fixture(autouse=True)
-def _api_key(monkeypatch):
+def _settings(monkeypatch):
     monkeypatch.setattr(prism.settings, "groq_api_key", "test-key")
+    # Disabled by default regardless of the real value in .env, so tests never
+    # depend on network access or a real PRISM key.
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "")
+
+
+def _use_trace_transport(monkeypatch, responses):
+    """Same idea as _use_transport, but for _emit_trace's plain httpx.AsyncClient.
+
+    Uses prism._TRACE_TRANSPORT rather than patching httpx.AsyncClient itself -
+    that class is a shared, process-wide symbol the openai SDK also inspects
+    (via isinstance checks unrelated to tracing) on every request it builds,
+    so replacing it here would break the Groq call in the same test.
+    """
+    sent = []
+    queue = list(responses)
+
+    def handler(request):
+        sent.append(request)
+        response = queue.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(prism, "_TRACE_TRANSPORT", httpx.MockTransport(handler))
+    return sent
 
 
 def _completion(content, model="openai/gpt-oss-120b", finish_reason="stop"):
@@ -75,27 +101,50 @@ def test_successful_call_sends_groq_request_with_configured_model(monkeypatch):
     assert "provider" not in body
 
 
-def test_prism_enabled_routes_through_proxy_with_stable_session_and_agent_ids(monkeypatch):
-    monkeypatch.setattr(prism.settings, "prism_enabled", True)
-    monkeypatch.setattr(prism.settings, "prism_proxy_url", "https://prism-proxy.test/v1/")
-    sent = _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("ok"))])
+def test_trace_not_sent_when_prismtrace_api_key_unset(monkeypatch):
+    # autouse fixture leaves prismtrace_api_key = "" - the default, disabled state.
+    trace_sent = _use_trace_transport(monkeypatch, [])
+    _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("ok"))])
 
     _call()
 
-    request = sent[0]
-    assert str(request.url) == "https://prism-proxy.test/v1/chat/completions"
-    assert request.headers["x-prism-session-id"] == "w1:2026-09-14"
-    assert request.headers["x-prism-agent-id"] == AGENT_ID == "solaris-heat-safety"
-    assert request.headers["x-prism-worker-id"] == "w1"
+    assert trace_sent == []
 
 
-def test_prism_disabled_sends_no_prism_headers(monkeypatch):
-    monkeypatch.setattr(prism.settings, "prism_enabled", False)
-    sent = _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("ok"))])
+def test_trace_sent_with_documented_shape_when_configured(monkeypatch):
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "pt-sk-test")
+    monkeypatch.setattr(prism.settings, "prismtrace_project_id", "proj-123")
+    monkeypatch.setattr(prism.settings, "prismtrace_host", "https://prism-api-prod.up.railway.app")
 
-    _call()
+    trace_sent = _use_trace_transport(monkeypatch, [httpx.Response(200, json={"ok": True})])
+    _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("the reply", model="openai/gpt-oss-120b"))])
 
-    assert not any(name.lower().startswith("x-prism") for name in sent[0].headers)
+    assert _call() == "the reply"
+
+    assert len(trace_sent) == 1
+    request = trace_sent[0]
+    assert str(request.url) == "https://prism-api-prod.up.railway.app/api/traces"
+    # Documented gotcha: this is X-PRISMtrace-Key, not an Authorization: Bearer header.
+    assert request.headers["x-prismtrace-key"] == "pt-sk-test"
+    assert "authorization" not in request.headers
+
+    body = json.loads(request.content)
+    assert body["project_id"] == "proj-123"
+    assert body["model"] == "openai/gpt-oss-120b"
+    assert body["output_message"] == "the reply"
+    assert body["session_id"] == "w1:2026-09-14"  # groups traces into one trajectory
+    assert body["input_messages"] == [{"role": "user", "content": "hi"}]
+    assert isinstance(body["latency_ms"], int)
+    assert body["agent_id"] == AGENT_ID == "solaris-heat-safety"
+
+
+def test_trace_delivery_failure_does_not_break_the_chat_reply(monkeypatch):
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "pt-sk-test")
+    trace_sent = _use_trace_transport(monkeypatch, [httpx.ConnectError("prism unreachable")])
+    _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("the reply"))])
+
+    assert _call() == "the reply"
+    assert len(trace_sent) == 1
 
 
 def test_short_rate_limit_is_retried_once(monkeypatch):

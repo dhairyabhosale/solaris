@@ -2,14 +2,14 @@
 Every LLM call in Solaris goes through this module - it's the one seam
 where PRISM (Block Convey) tracing gets wired in.
 
-Calls go to Groq's OpenAI-compatible API through the OpenAI SDK.
-PRISM's "zero-code proxy" model works by pointing that client at their
-proxy URL instead of Groq; the proxy forwards the request and logs the
-full exchange. Until we have PRISM's real proxy details,
-PRISM_ENABLED=false calls Groq directly, so the app is usable
-immediately. Flip PRISM_ENABLED to true and fill in PRISM_PROXY_URL /
-PRISM_API_KEY / PRISM_PROJECT_ID once we have them - no other file needs
-to change.
+Calls go straight to Groq's OpenAI-compatible API through the OpenAI SDK
+(there is no proxy to route through - an earlier version of this file
+guessed at a "zero-code proxy" model before we'd actually onboarded with
+Block Convey; the real integration, per prism.blockconvey.com, is a
+side-channel trace POST to their ingest API after each model call).
+chat_completion() calls Groq, then best-effort POSTs one trace to
+PRISM's /api/traces. Trace delivery failing never breaks a worker's
+chat reply - PRISMTRACE_API_KEY being unset just skips it entirely.
 
 agent_id is intentionally a hardcoded constant, and session_id is passed
 in by the caller (see app.services.store.session_id_for) as
@@ -20,8 +20,10 @@ so PRISM groups the conversation into one traceable session.
 import asyncio
 import logging
 import re
+import time
 from typing import Optional
 
+import httpx
 import openai
 from openai import AsyncOpenAI
 
@@ -32,6 +34,14 @@ logger = logging.getLogger(__name__)
 AGENT_ID = "solaris-heat-safety"
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+TRACE_TIMEOUT_S = 5.0
+
+# Test seam: never set outside tests. A test overriding httpx.AsyncClient
+# itself corrupts a symbol openai's SDK also reads (it does its own
+# isinstance(..., httpx.AsyncClient) check on every request, unrelated to
+# tracing) - swapping just the transport here doesn't touch that class.
+_TRACE_TRANSPORT: Optional[httpx.BaseTransport] = None
 
 REQUEST_TIMEOUT_S = 25.0
 MAX_RETRY_DELAY_S = 5.0
@@ -82,28 +92,50 @@ def seconds_until_reset(exc: openai.APIStatusError) -> Optional[float]:
     return None
 
 
-def _client(session_id: str, worker_id: str) -> AsyncOpenAI:
-    if settings.prism_enabled and settings.prism_proxy_url:
-        base_url = settings.prism_proxy_url.rstrip("/")
-        headers = {
-            "X-Prism-Api-Key": settings.prism_api_key,
-            "X-Prism-Project-Id": settings.prism_project_id,
-            "X-Prism-Session-Id": session_id,
-            "X-Prism-Agent-Id": AGENT_ID,
-            "X-Prism-Worker-Id": worker_id,
-        }
-    else:
-        base_url = GROQ_BASE_URL
-        headers = {}
-
+def _client() -> AsyncOpenAI:
     # max_retries=0: the SDK's own backoff could outlast Vercel's function timeout.
     return AsyncOpenAI(
-        base_url=base_url,
+        base_url=GROQ_BASE_URL,
         api_key=settings.groq_api_key,
-        default_headers=headers,
         timeout=REQUEST_TIMEOUT_S,
         max_retries=0,
     )
+
+
+async def _emit_trace(
+    session_id: str,
+    worker_id: str,
+    model: str,
+    input_messages: list[dict],
+    output_message: str,
+    latency_ms: int,
+) -> None:
+    """POST one trace to PRISM. Best-effort: the worker's reply is already
+    decided by the time this runs, so a slow/down PRISM must never affect it."""
+    if not settings.prismtrace_api_key:
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=TRACE_TIMEOUT_S, transport=_TRACE_TRANSPORT) as client:
+            resp = await client.post(
+                f"{settings.prismtrace_host.rstrip('/')}/api/traces",
+                headers={"X-PRISMtrace-Key": settings.prismtrace_api_key},
+                json={
+                    "project_id": settings.prismtrace_project_id,
+                    "model": model,
+                    "input_messages": input_messages,
+                    "output_message": output_message,
+                    "latency_ms": latency_ms,
+                    "session_id": session_id,
+                    # Not in PRISM's documented trace schema; included for forward
+                    # compatibility in case they start accepting/storing it.
+                    "agent_id": AGENT_ID,
+                    "worker_id": worker_id,
+                },
+            )
+            resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("PRISM trace delivery failed (worker's reply already went out): %r", exc)
 
 
 async def chat_completion(session_id: str, worker_id: str, request: dict) -> str:
@@ -113,9 +145,10 @@ async def chat_completion(session_id: str, worker_id: str, request: dict) -> str
         raise LLMUnavailable("Solaris's AI service isn't available right now. Please try again later.")
 
     kwargs = {**request, "model": settings.groq_model}
+    started = time.monotonic()
 
     try:
-        async with asyncio.timeout(TOTAL_DEADLINE_S), _client(session_id, worker_id) as client:
+        async with asyncio.timeout(TOTAL_DEADLINE_S), _client() as client:
             try:
                 completion = await client.chat.completions.create(**kwargs)
             except openai.RateLimitError as exc:
@@ -155,6 +188,8 @@ async def chat_completion(session_id: str, worker_id: str, request: dict) -> str
             ) from exc
         raise LLMUnavailable("Solaris's AI model is unavailable right now. Please try again in a moment.") from exc
 
+    latency_ms = round((time.monotonic() - started) * 1000)
+
     choice = completion.choices[0] if completion.choices else None
     content = choice.message.content if choice and choice.message else None
     if not content:
@@ -162,5 +197,14 @@ async def chat_completion(session_id: str, worker_id: str, request: dict) -> str
             "Groq reply had no content (finish_reason=%s)", choice.finish_reason if choice else None
         )
         raise LLMUnavailable("Solaris couldn't put together a reply. Please rephrase and try again.")
+
+    await _emit_trace(
+        session_id=session_id,
+        worker_id=worker_id,
+        model=completion.model,
+        input_messages=kwargs["messages"],
+        output_message=content,
+        latency_ms=latency_ms,
+    )
 
     return content

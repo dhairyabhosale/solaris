@@ -46,22 +46,29 @@ tests/
 ```
 
 Every LLM call — onboarding-time or follow-up — goes through
-`app/services/prism.py`. That's the one seam where tracing is wired in, and
-where `session_id` / `agent_id` are attached, so switching PRISM on/off or
-changing its proxy details never touches route or prompt code.
+`app/services/prism.py`. That's the one seam where tracing is wired in, so
+changing PRISM's credentials or host never touches route or prompt code.
 
 ## PRISM integration
 
-- `agent_id` is a hardcoded constant: `"solaris-heat-safety"`.
+Onboarded via prism.blockconvey.com/onboarding. The real integration is a
+**side-channel trace POST**, not a proxy the LLM call routes through (an
+earlier version of this doc guessed at a "zero-code proxy" model before
+onboarding — that guess was wrong): `prism.py` calls Groq directly, then
+best-effort POSTs one trace per reply to `{PRISMTRACE_HOST}/api/traces`
+with header `X-PRISMtrace-Key`. A missing `PRISMTRACE_API_KEY` or a failed
+POST never affects the chat reply.
+
+- `agent_id` is a hardcoded constant, `"solaris-heat-safety"`, sent as an
+  extra field on each trace (not in PRISM's documented schema, but
+  harmless if ignored).
 - `session_id` is `"<worker_id>:<YYYY-MM-DD>"` — stable per worker per day,
-  so a whole day's conversation traces as one PRISM session.
-- PRISM's zero-code proxy model works by pointing the LLM client at their
-  proxy URL instead of calling Groq directly; the proxy forwards the
-  request and logs the exchange. Until we have Block Convey's exact proxy
-  docs, `PRISM_ENABLED=false` in `.env` makes `prism.py` call Groq
-  directly, so the app runs standalone. Flip it to `true` and fill in
-  `PRISM_PROXY_URL` / `PRISM_API_KEY` / `PRISM_PROJECT_ID` once we have
-  them — nothing else in the app changes.
+  so a whole day's conversation traces as one PRISM trajectory.
+- Set `PRISMTRACE_API_KEY` / `PRISMTRACE_PROJECT_ID` / `PRISMTRACE_HOST` in
+  `.env` to enable tracing; leave `PRISMTRACE_API_KEY` blank to disable it.
+- **Not yet verified**: the credential handshake and a live trace haven't
+  actually been confirmed against PRISM's dashboard. See `CLAUDE.md` for
+  why and what's left to check.
 - `scripts/run_scenarios.py` replays a fixed set of onboarding +
   conversation scenarios (mild day, extreme heat + symptoms, "can't take a
   break" follow-up) against the running API. Run it before and after a
