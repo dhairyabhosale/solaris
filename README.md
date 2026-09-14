@@ -35,7 +35,7 @@ app/
 └── services/
     ├── weather.py                Open-Meteo geocoding + current weather
     ├── llm.py                     prompt construction + structured-reply parsing
-    ├── prism.py                    the one LLM call (OpenRouter via OpenAI SDK), PRISM tracing seam
+    ├── prism.py                    the one LLM call (Groq via OpenAI SDK), PRISM tracing seam
     └── store.py                     in-memory worker profiles + conversation history
 scripts/
 └── run_scenarios.py         repeatable scenario battery for PRISM before/after comparisons
@@ -56,9 +56,9 @@ changing its proxy details never touches route or prompt code.
 - `session_id` is `"<worker_id>:<YYYY-MM-DD>"` — stable per worker per day,
   so a whole day's conversation traces as one PRISM session.
 - PRISM's zero-code proxy model works by pointing the LLM client at their
-  proxy URL instead of calling OpenRouter directly; the proxy forwards the
+  proxy URL instead of calling Groq directly; the proxy forwards the
   request and logs the exchange. Until we have Block Convey's exact proxy
-  docs, `PRISM_ENABLED=false` in `.env` makes `prism.py` call OpenRouter
+  docs, `PRISM_ENABLED=false` in `.env` makes `prism.py` call Groq
   directly, so the app runs standalone. Flip it to `true` and fill in
   `PRISM_PROXY_URL` / `PRISM_API_KEY` / `PRISM_PROJECT_ID` once we have
   them — nothing else in the app changes.
@@ -76,28 +76,27 @@ python -m venv .venv
 # source .venv/bin/activate   # macOS/Linux
 
 pip install -r requirements.txt
-cp .env.example .env          # then fill in OPENROUTER_API_KEY (and PRISM_* once available)
+cp .env.example .env          # then fill in GROQ_API_KEY (and PRISM_* once available)
 ```
 
-### LLM: OpenRouter free models
+### LLM: Groq
 
-Solaris calls [OpenRouter](https://openrouter.ai) through the OpenAI Python SDK
-(`base_url=https://openrouter.ai/api/v1`). Get a key at
-https://openrouter.ai/keys and set:
+Solaris calls [Groq](https://console.groq.com) through the OpenAI Python SDK
+(`base_url=https://api.groq.com/openai/v1`). Get a key at
+https://console.groq.com/keys and set:
 
-- `OPENROUTER_API_KEY` - required.
-- `OPENROUTER_MODEL` - the primary model. `:free` models rotate, so check
-  https://openrouter.ai/models?max_price=0 and pick one that supports
-  structured outputs (the app requests a JSON schema for
-  `risk_level` / `escalate` / `message`).
-- `OPENROUTER_FALLBACK_MODELS` - optional, comma-separated; OpenRouter
-  tries them in order if the primary is down or rate-limited upstream
-  (3 models max, primary included).
+- `GROQ_API_KEY` - required.
+- `GROQ_MODEL` - defaults to `openai/gpt-oss-120b`, Groq's own recommended
+  replacement for the now-deprecated `llama-3.3-70b-versatile`. It's one
+  of the few models on Groq with native strict structured-output support,
+  which the app relies on for a parseable `risk_level` / `escalate` /
+  `message` reply - check
+  https://console.groq.com/docs/structured-outputs before switching models,
+  and https://console.groq.com/docs/rate-limits for current free-tier
+  limits per model.
 
-Free-tier limits are account-wide: 20 requests/minute, and 50
-requests/day until the account has bought at least $10 of credits
-(then 1000/day). Each chat message is one request. When a limit is hit,
-the chat shows a readable "try again" message instead of an error.
+When a rate limit or a slow/unavailable model is hit, the chat shows a
+readable "try again" message instead of an error.
 
 Run the API:
 

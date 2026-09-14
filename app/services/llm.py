@@ -4,11 +4,12 @@ follow-up conversation. All requests are routed through
 app.services.prism so tracing is centralized in one place.
 
 The model is asked for structured JSON (OpenAI-style json_schema
-response_format) so risk_level and escalate are reliably parseable - the
-frontend uses them for color-coded UI, and PRISM evaluation can score
-them directly instead of scraping prose. Free OpenRouter models don't all
-honour the schema equally, so parsing tolerates code fences, reasoning
-tags, and loosely typed values.
+response_format, strict mode) so risk_level and escalate are reliably
+parseable - the frontend uses them for color-coded UI, and PRISM
+evaluation can score them directly instead of scraping prose. Parsing
+still tolerates code fences, reasoning tags, and loosely typed values,
+since GROQ_MODEL could be pointed at a model without native structured
+output support.
 """
 
 import json

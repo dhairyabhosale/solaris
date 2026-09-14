@@ -7,11 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    openrouter_api_key: str = ""
-    # ":free" models rotate - check https://openrouter.ai/models?max_price=0 before a demo.
-    openrouter_model: str = "nex-agi/nex-n2.5-mini:free"
-    # Comma-separated; OpenRouter tries these in order if the primary is down or rate-limited upstream.
-    openrouter_fallback_models: str = "dots-studio/dots-3-note-preview:free"
+    groq_api_key: str = ""
+    # llama-3.3-70b-versatile is deprecated on Groq's free tier (shut down
+    # 2026-08-16) - gpt-oss-120b is Groq's own recommended replacement, and
+    # one of the few models that support strict structured outputs, which
+    # llm.py relies on for parseable risk_level/escalate. Check
+    # https://console.groq.com/docs/rate-limits before changing this.
+    groq_model: str = "openai/gpt-oss-120b"
 
     prism_enabled: bool = False
     prism_api_key: str = ""
