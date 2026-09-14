@@ -1,11 +1,33 @@
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from app.models import ChatRequest, ChatResponse, ChatTurn, WorkerStatus
+from app.models import ChatRequest, ChatResponse, ChatTurn, HydrationLogRequest, TraceEntry, TraceLog, WorkerStatus
 from app.services import llm, store, weather
-from app.services.prism import LLMUnavailable
+from app.services.prism import AGENT_ID, LLMUnavailable
 
 router = APIRouter()
+
+# Rough ml/hour targets in line with the kind of hydration cadence the LLM
+# itself already recommends per risk level - not official medical guidance,
+# just a consistent number to show worker-facing progress against.
+_HYDRATION_ML_PER_HOUR = {"low": 250, "moderate": 350, "high": 500, "extreme": 600}
+_DEFAULT_HYDRATION_ML_PER_HOUR = 300
+
+
+def _shift_hours(work_start: str, work_end: str) -> float:
+    start_h, start_m = (int(part) for part in work_start.split(":"))
+    end_h, end_m = (int(part) for part in work_end.split(":"))
+    start_minutes = start_h * 60 + start_m
+    end_minutes = end_h * 60 + end_m
+    if end_minutes <= start_minutes:
+        end_minutes += 24 * 60  # overnight shift
+    return (end_minutes - start_minutes) / 60
+
+
+def _hydration_target_ml(risk_level: str, profile) -> int:
+    per_hour = _HYDRATION_ML_PER_HOUR.get(risk_level, _DEFAULT_HYDRATION_ML_PER_HOUR)
+    hours = _shift_hours(profile.work_start, profile.work_end)
+    return round(per_hour * hours / 50) * 50
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -62,7 +84,32 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         temperature_c=today_weather["temperature_c"],
         feels_like_c=today_weather["feels_like_c"],
         humidity_pct=today_weather["humidity_pct"],
+        peak_heat_hour=today_weather.get("peak_heat_hour"),
+        hydration_logged_ml=await store.get_hydration_ml(session_id),
+        hydration_target_ml=_hydration_target_ml(risk_level, profile),
     )
+
+
+@router.post("/worker/{worker_id}/hydration")
+async def log_hydration(worker_id: str, payload: HydrationLogRequest) -> dict:
+    profile = await store.get_worker(worker_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Worker not onboarded yet. Call /onboarding first.")
+
+    session_id = store.session_id_for(worker_id)
+    total = await store.add_hydration_ml(session_id, payload.amount_ml)
+    return {"hydration_logged_ml": total}
+
+
+@router.get("/worker/{worker_id}/traces", response_model=TraceLog)
+async def worker_traces(worker_id: str) -> TraceLog:
+    profile = await store.get_worker(worker_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Worker not onboarded yet. Call /onboarding first.")
+
+    session_id = store.session_id_for(worker_id)
+    traces = [TraceEntry(**t) for t in await store.get_traces(session_id)]
+    return TraceLog(session_id=session_id, agent_id=AGENT_ID, traces=traces)
 
 
 @router.post("/worker/{worker_id}/acknowledge")
@@ -85,16 +132,20 @@ async def worker_status(worker_id: str) -> WorkerStatus:
     session_id = store.session_id_for(worker_id)
     history = [ChatTurn(**turn) for turn in await store.get_history(session_id)]
     cached_weather = await store.get_weather(session_id) or {}
+    risk_level = await store.get_risk_level(session_id)
 
     return WorkerStatus(
         onboarded=True,
         profile=profile,
         session_id=session_id,
-        risk_level=await store.get_risk_level(session_id),
+        risk_level=risk_level,
         schedule=await store.get_schedule(session_id),
         acknowledged=await store.get_acknowledged(session_id),
         temperature_c=cached_weather.get("temperature_c"),
         feels_like_c=cached_weather.get("feels_like_c"),
         humidity_pct=cached_weather.get("humidity_pct"),
+        peak_heat_hour=cached_weather.get("peak_heat_hour"),
+        hydration_logged_ml=await store.get_hydration_ml(session_id),
+        hydration_target_ml=_hydration_target_ml(risk_level or "unknown", profile),
         history=history,
     )

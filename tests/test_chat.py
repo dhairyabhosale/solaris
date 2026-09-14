@@ -239,3 +239,84 @@ def test_status_returns_cached_weather_after_chat(monkeypatch):
     status = client.get("/worker/worker-weather-status/status").json()
     assert status["temperature_c"] == 36.0
     assert status["humidity_pct"] == 50
+
+
+def test_hydration_log_accumulates_and_defaults_to_250ml(monkeypatch):
+    _onboard("worker-hydro")
+
+    r1 = client.post("/worker/worker-hydro/hydration", json={})
+    assert r1.status_code == 200
+    assert r1.json()["hydration_logged_ml"] == 250
+
+    r2 = client.post("/worker/worker-hydro/hydration", json={"amount_ml": 500})
+    assert r2.json()["hydration_logged_ml"] == 750
+
+
+def test_hydration_log_requires_onboarding():
+    resp = client.post("/worker/never-onboarded-hydro/hydration", json={})
+    assert resp.status_code == 404
+
+
+def test_chat_response_includes_hydration_target_and_peak_hour(monkeypatch):
+    _onboard("worker-hydro-target")
+
+    async def fake_weather(location):
+        return {
+            "location": location,
+            "temperature_c": 38.0,
+            "feels_like_c": 42.0,
+            "humidity_pct": 55,
+            "peak_heat_hour": 14,
+        }
+
+    async def fake_ask(**kwargs):
+        return {"risk_level": "high", "escalate": False, "message": "High risk.", "schedule": None}
+
+    monkeypatch.setattr(chat_route.weather, "get_current_weather", fake_weather)
+    monkeypatch.setattr(chat_route.llm, "ask", fake_ask)
+
+    resp = client.post("/chat", json={"worker_id": "worker-hydro-target", "message": "Checking in"})
+    body = resp.json()
+    assert body["peak_heat_hour"] == 14
+    # general labor default profile: 07:00-16:00 = 9h, high risk = 500ml/hr -> 4500ml
+    assert body["hydration_target_ml"] == 4500
+    assert body["hydration_logged_ml"] == 0
+
+
+def test_traces_endpoint_requires_onboarding():
+    resp = client.get("/worker/never-onboarded-traces/traces")
+    assert resp.status_code == 404
+
+
+def test_traces_endpoint_returns_recorded_traces():
+    import asyncio
+
+    _onboard("worker-traces")
+    session_id = chat_route.store.session_id_for("worker-traces")
+    asyncio.run(
+        chat_route.store.append_trace(
+            session_id,
+            {
+                "timestamp": "2026-09-14T12:00:00",
+                "input": "Checking in for today",
+                "output": "Stay hydrated.",
+                "latency_ms": 850,
+                "model": "openai/gpt-oss-120b",
+                "delivered_to_prism": False,
+            },
+        )
+    )
+
+    resp = client.get("/worker/worker-traces/traces")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["agent_id"] == "solaris-heat-safety"
+    assert body["session_id"] == session_id
+    assert len(body["traces"]) == 1
+    assert body["traces"][0]["input"] == "Checking in for today"
+    assert body["traces"][0]["output"] == "Stay hydrated."
+
+
+def test_shift_hours_handles_overnight_shift():
+    assert chat_route._shift_hours("22:00", "06:00") == 8.0
+    assert chat_route._shift_hours("07:00", "16:00") == 9.0

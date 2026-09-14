@@ -295,3 +295,55 @@ def test_parse_duration_seconds(text, expected):
         assert result is None
     else:
         assert result == pytest.approx(expected)
+
+
+def test_emit_trace_records_locally_even_when_prism_disabled(monkeypatch):
+    from app.services import store
+
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "")
+    session_id = "trace-record-test:2026-09-14"
+
+    asyncio.run(
+        prism._emit_trace(
+            session_id=session_id,
+            worker_id="w1",
+            model="openai/gpt-oss-120b",
+            input_messages=[
+                {"role": "system", "content": "SYSTEM"},
+                {"role": "user", "content": "Checking in"},
+            ],
+            output_message="High risk today.",
+            latency_ms=900,
+        )
+    )
+
+    traces = asyncio.run(store.get_traces(session_id))
+    assert len(traces) == 1
+    assert traces[0]["input"] == "Checking in"
+    assert traces[0]["output"] == "High risk today."
+    assert traces[0]["latency_ms"] == 900
+    assert traces[0]["delivered_to_prism"] is False
+
+
+def test_emit_trace_records_locally_before_attempting_prism_delivery(monkeypatch):
+    from app.services import store
+
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "pt-sk-test")
+    trace_sent = _use_trace_transport(monkeypatch, [httpx.ConnectError("prism unreachable")])
+    session_id = "trace-record-test-2:2026-09-14"
+
+    asyncio.run(
+        prism._emit_trace(
+            session_id=session_id,
+            worker_id="w1",
+            model="openai/gpt-oss-120b",
+            input_messages=[{"role": "user", "content": "hi"}],
+            output_message="ok",
+            latency_ms=100,
+        )
+    )
+
+    traces = asyncio.run(store.get_traces(session_id))
+    assert len(traces) == 1
+    assert traces[0]["delivered_to_prism"] is True  # reflects that PRISM *was* configured, not delivery success
+    assert len(trace_sent) == 1

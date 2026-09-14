@@ -1,332 +1,464 @@
-// Solaris — Heat Safety Companion
-// Vanilla JS app: onboarding -> chat, backed by /onboarding, /chat,
-// /worker/{id}/status. No build step, no framework.
+// Solaris — Heat Safety Companion. Vanilla JS, no build step, no framework.
+// Backed by /onboarding, /chat, /worker/{id}/status, /worker/{id}/acknowledge,
+// /worker/{id}/hydration, /worker/{id}/traces.
 
-const STORAGE_KEY = "solaris_worker_id";
-
-const el = {
-  onboardingScreen: document.getElementById("onboarding-screen"),
-  resumeScreen: document.getElementById("resume-screen"),
-  appScreen: document.getElementById("app-screen"),
-  onboardingForm: document.getElementById("onboarding-form"),
-  onboardingSubmit: document.getElementById("onboarding-submit"),
-  onboardingError: document.getElementById("onboarding-error"),
-  resumeContinueLabel: document.getElementById("resume-continue-label"),
-  resumeGreetingName: document.getElementById("resume-greeting-name"),
-  resumeContinueBtn: document.getElementById("resume-continue-btn"),
-  resumeNewBtn: document.getElementById("resume-new-btn"),
-  switchWorkerBtn: document.getElementById("switch-worker-btn"),
-  riskBadge: document.getElementById("risk-badge"),
-  riskLabel: document.getElementById("risk-label"),
-  profileWorker: document.getElementById("profile-worker"),
-  profileWorkType: document.getElementById("profile-work-type"),
-  profileShift: document.getElementById("profile-shift"),
-  profileLocation: document.getElementById("profile-location"),
-  conditionsCard: document.getElementById("conditions-card"),
-  tempValue: document.getElementById("temp-value"),
-  feelsValue: document.getElementById("feels-value"),
-  humidityValue: document.getElementById("humidity-value"),
-  humidityGaugeFill: document.getElementById("humidity-gauge-fill"),
-  hydrationFill: document.getElementById("hydration-fill"),
-  hydrationNext: document.getElementById("hydration-next"),
-  scheduleCard: document.getElementById("schedule-card"),
-  scheduleList: document.getElementById("schedule-list"),
-  ackBtn: document.getElementById("ack-btn"),
-  messageList: document.getElementById("message-list"),
-  chatForm: document.getElementById("chat-form"),
-  chatInput: document.getElementById("chat-input"),
-  sendBtn: document.getElementById("send-btn"),
-};
+const KNOWN_WORKERS_KEY = "solaris_known_workers"; // [{worker_id, work_type, location}]
+const ACTIVE_WORKER_KEY = "solaris_active_worker"; // worker_id string
 
 const RISK_LABELS = {
-  low: "Low risk",
-  moderate: "Moderate risk",
-  high: "High risk",
-  extreme: "Extreme risk",
-  unknown: "Checking today's risk…",
+  low: "Low heat risk",
+  moderate: "Moderate heat risk",
+  high: "High heat risk",
+  extreme: "Extreme heat risk",
+  unknown: "Awaiting check-in",
 };
 
-const ICONS = {
-  assistant: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+const RISK_COLORS = {
+  low: "#0d9488",
+  moderate: "#d97706",
+  high: "#ea580c",
+  extreme: "#dc2626",
+  unknown: "#94a3b8",
 };
 
-let workerId = localStorage.getItem(STORAGE_KEY);
-let pendingResumeStatus = null;
+const GAUGE_CIRCUMFERENCE = 440;
+const GAUGE_MIN_C = 20;
+const GAUGE_MAX_C = 50;
+
+const el = {
+  onboardingScreen: document.getElementById("onboardingScreen"),
+  onboardingForm: document.getElementById("onboardingForm"),
+  onboardingSubmit: document.getElementById("onboardingSubmit"),
+  onboardingError: document.getElementById("onboardingError"),
+  appRoot: document.getElementById("appRoot"),
+
+  liveClockTime: document.getElementById("liveClockTime"),
+  liveClockDate: document.getElementById("liveClockDate"),
+
+  workerPillName: document.getElementById("workerPillName"),
+  workerPillRole: document.getElementById("workerPillRole"),
+  btnOpenSwitcher: document.getElementById("btnOpenSwitcher"),
+
+  heatRiskBadge: document.getElementById("heatRiskBadge"),
+  heatRiskBadgeText: document.getElementById("heatRiskBadgeText"),
+  heatIndexVal: document.getElementById("heatIndexVal"),
+  gaugeProgress: document.getElementById("gaugeProgress"),
+  locationVal: document.getElementById("locationVal"),
+  tempVal: document.getElementById("tempVal"),
+  humidityVal: document.getElementById("humidityVal"),
+  peakHourVal: document.getElementById("peakHourVal"),
+  escalationBanner: document.getElementById("escalationBanner"),
+  escalationText: document.getElementById("escalationText"),
+
+  nextStepVal: document.getElementById("nextStepVal"),
+  nextStepSubtext: document.getElementById("nextStepSubtext"),
+  waterTargetVal: document.getElementById("waterTargetVal"),
+  scheduleList: document.getElementById("scheduleList"),
+  ackBtn: document.getElementById("ackBtn"),
+  ackBtnLabel: document.getElementById("ackBtnLabel"),
+
+  hydrationFill: document.getElementById("hydrationFill"),
+  hydrationBarFill: document.getElementById("hydrationBarFill"),
+  hydrationCurrentText: document.getElementById("hydrationCurrentText"),
+  btnLogSip: document.getElementById("btnLogSip"),
+
+  chatHistory: document.getElementById("chatHistory"),
+  chatForm: document.getElementById("chatForm"),
+  chatInput: document.getElementById("chatInput"),
+  btnSendMessage: document.getElementById("btnSendMessage"),
+  quickChips: document.querySelectorAll(".chip-btn"),
+
+  prismDrawer: document.getElementById("prismDrawer"),
+  btnTogglePrism: document.getElementById("btnTogglePrism"),
+  btnClosePrism: document.getElementById("btnClosePrism"),
+  prismSessionIdDisplay: document.getElementById("prismSessionIdDisplay"),
+  prismTracesContainer: document.getElementById("prismTracesContainer"),
+
+  switcherModal: document.getElementById("switcherModal"),
+  btnCloseSwitcher: document.getElementById("btnCloseSwitcher"),
+  workerList: document.getElementById("workerList"),
+  btnShowAddWorker: document.getElementById("btnShowAddWorker"),
+  addWorkerForm: document.getElementById("addWorkerForm"),
+  addWorkerSubmit: document.getElementById("addWorkerSubmit"),
+  addWorkerError: document.getElementById("addWorkerError"),
+
+  sosModal: document.getElementById("sosModal"),
+  btnSos: document.getElementById("btnSos"),
+  btnCloseSos: document.getElementById("btnCloseSos"),
+};
+
+let activeWorkerId = null;
+let activeProfile = null;
 let currentSchedule = null;
+let hydrationTargetMl = null;
 
 init();
 
 async function init() {
-  if (!workerId) {
+  setupEventListeners();
+  startLiveClock();
+
+  activeWorkerId = localStorage.getItem(ACTIVE_WORKER_KEY);
+  const known = loadKnownWorkers();
+
+  if (!activeWorkerId && known.length) {
+    activeWorkerId = known[known.length - 1].worker_id;
+  }
+
+  if (!activeWorkerId) {
     showOnboarding();
     return;
   }
 
   try {
-    const status = await api(`/worker/${encodeURIComponent(workerId)}/status`, { method: "GET" });
+    const status = await api(`/worker/${encodeURIComponent(activeWorkerId)}/status`, { method: "GET" });
     if (!status.onboarded) {
-      localStorage.removeItem(STORAGE_KEY);
-      workerId = null;
+      forgetWorker(activeWorkerId);
+      activeWorkerId = null;
       showOnboarding();
       return;
     }
-    pendingResumeStatus = status;
-    showResume(status.profile);
+    showApp();
+    hydrateFromStatus(status);
   } catch (err) {
     console.error("Failed to restore session", err);
     showOnboarding();
   }
 }
 
+function setupEventListeners() {
+  el.onboardingForm.addEventListener("submit", handleOnboardingSubmit);
+  el.addWorkerForm.addEventListener("submit", handleAddWorkerSubmit);
+  el.chatForm.addEventListener("submit", handleChatSubmit);
+  el.btnLogSip.addEventListener("click", () => logHydration(250));
+  el.ackBtn.addEventListener("click", handleAcknowledge);
+
+  el.quickChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      el.chatInput.value = chip.getAttribute("data-msg");
+      el.chatForm.requestSubmit();
+    });
+  });
+
+  el.btnTogglePrism.addEventListener("click", () => {
+    el.prismDrawer.classList.toggle("open");
+    if (el.prismDrawer.classList.contains("open")) loadPrismTraces();
+  });
+  el.btnClosePrism.addEventListener("click", () => el.prismDrawer.classList.remove("open"));
+
+  el.btnOpenSwitcher.addEventListener("click", openSwitcher);
+  el.btnCloseSwitcher.addEventListener("click", closeSwitcher);
+  el.btnShowAddWorker.addEventListener("click", () => {
+    el.addWorkerForm.hidden = false;
+    el.btnShowAddWorker.hidden = true;
+  });
+
+  el.btnSos.addEventListener("click", () => el.sosModal.classList.add("active"));
+  el.btnCloseSos.addEventListener("click", () => el.sosModal.classList.remove("active"));
+}
+
+// ---------------------------------------------------------------------
+// Live clock (local JS clock, IST - matches the backend's schedule timezone;
+// no external "current time" API needed or more reliable than one)
+// ---------------------------------------------------------------------
+
+function startLiveClock() {
+  tickClock();
+  setInterval(tickClock, 1000);
+}
+
+function tickClock() {
+  const now = new Date();
+  el.liveClockTime.textContent = now.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  el.liveClockDate.textContent =
+    now.toLocaleDateString("en-GB", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+    }) + " IST";
+}
+
+// ---------------------------------------------------------------------
+// Known workers (client-side registry so "switch worker" can offer a
+// picker instead of forcing a brand-new signup every time)
+// ---------------------------------------------------------------------
+
+function loadKnownWorkers() {
+  try {
+    return JSON.parse(localStorage.getItem(KNOWN_WORKERS_KEY)) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveKnownWorkers(list) {
+  localStorage.setItem(KNOWN_WORKERS_KEY, JSON.stringify(list));
+}
+
+function rememberWorker(profile) {
+  const known = loadKnownWorkers().filter((w) => w.worker_id !== profile.worker_id);
+  known.push({ worker_id: profile.worker_id, work_type: profile.work_type, location: profile.location });
+  saveKnownWorkers(known);
+}
+
+function forgetWorker(workerId) {
+  saveKnownWorkers(loadKnownWorkers().filter((w) => w.worker_id !== workerId));
+}
+
+function setActiveWorker(workerId) {
+  activeWorkerId = workerId;
+  localStorage.setItem(ACTIVE_WORKER_KEY, workerId);
+}
+
+// ---------------------------------------------------------------------
+// Screens
+// ---------------------------------------------------------------------
+
 function showOnboarding() {
-  el.appScreen.hidden = true;
-  el.resumeScreen.hidden = true;
+  el.appRoot.hidden = true;
   el.onboardingScreen.hidden = false;
 }
 
-function showResume(profile) {
-  el.appScreen.hidden = true;
+function showApp() {
   el.onboardingScreen.hidden = true;
-  el.resumeContinueLabel.textContent = `Continue as ${profile.worker_id}`;
-  el.resumeGreetingName.textContent = `, ${profile.worker_id}`;
-  el.resumeScreen.hidden = false;
+  el.appRoot.hidden = false;
 }
 
-el.resumeContinueBtn.addEventListener("click", () => {
-  const status = pendingResumeStatus;
-  if (!status) return;
+// ---------------------------------------------------------------------
+// Onboarding (first-ever visit)
+// ---------------------------------------------------------------------
 
-  showApp(status.profile);
-  setRiskLevel(status.risk_level || null, { animate: false });
-  renderConditions(status.temperature_c, status.feels_like_c, status.humidity_pct);
-  if (status.schedule && status.schedule.length) {
-    renderSchedule(status.schedule);
-    renderAcknowledged(status.acknowledged);
-  }
-  for (const turn of status.history) {
-    renderStoredTurn(turn);
-  }
-  scrollToBottom();
-});
-
-el.resumeNewBtn.addEventListener("click", () => {
-  localStorage.removeItem(STORAGE_KEY);
-  workerId = null;
-  pendingResumeStatus = null;
-  el.onboardingForm.reset();
-  showOnboarding();
-});
-
-function showApp(profile) {
-  el.onboardingScreen.hidden = true;
-  el.resumeScreen.hidden = true;
-  el.appScreen.hidden = false;
-  el.profileWorker.textContent = profile.worker_id;
-  el.profileWorkType.textContent = titleCase(profile.work_type);
-  el.profileShift.textContent = `${profile.work_start} – ${profile.work_end}`;
-  el.profileLocation.textContent = profile.location;
-
-  // Autofocus (and the scroll-into-view a browser does for it) is a desktop-
-  // only nicety: on narrow viewports it yanks the page past the profile
-  // card the instant onboarding finishes, and pops the keyboard unasked.
-  if (window.innerWidth > 860) {
-    el.chatInput.focus();
-  }
-}
-
-el.onboardingForm.addEventListener("submit", async (e) => {
+async function handleOnboardingSubmit(e) {
   e.preventDefault();
-  hideOnboardingError();
+  hideError(el.onboardingError);
 
-  const formData = new FormData(el.onboardingForm);
   const payload = {
-    worker_id: formData.get("worker_id").trim(),
-    work_type: formData.get("work_type"),
-    work_start: formData.get("work_start"),
-    work_end: formData.get("work_end"),
-    location: formData.get("location").trim(),
+    worker_id: document.getElementById("obWorkerId").value.trim(),
+    work_type: document.getElementById("obWorkType").value,
+    work_start: document.getElementById("obStart").value,
+    work_end: document.getElementById("obEnd").value,
+    location: document.getElementById("obLocation").value.trim(),
   };
 
   if (!payload.worker_id || !payload.work_type || !payload.location) {
-    showOnboardingError("Please fill in every field.");
+    showError(el.onboardingError, "Please fill in every field.");
     return;
   }
 
   setButtonLoading(el.onboardingSubmit, true);
-
   try {
     await api("/onboarding", { method: "POST", body: payload });
-    workerId = payload.worker_id;
-    localStorage.setItem(STORAGE_KEY, workerId);
-    showApp(payload);
+    rememberWorker(payload);
+    setActiveWorker(payload.worker_id);
+    activeProfile = payload;
+    showApp();
+    renderWorkerPill(payload);
     await sendMessage("Checking in for today", { fromUser: false });
   } catch (err) {
-    showOnboardingError(err.message || "Something went wrong. Please try again.");
+    showError(el.onboardingError, err.message || "Something went wrong. Please try again.");
   } finally {
     setButtonLoading(el.onboardingSubmit, false);
   }
-});
+}
 
-el.switchWorkerBtn.addEventListener("click", () => {
-  localStorage.removeItem(STORAGE_KEY);
-  workerId = null;
-  pendingResumeStatus = null;
-  currentSchedule = null;
-  el.messageList.innerHTML = "";
-  el.onboardingForm.reset();
-  setRiskLevel(null, { animate: false });
-  el.conditionsCard.hidden = true;
-  el.scheduleCard.hidden = true;
-  showOnboarding();
-});
-
-el.chatForm.addEventListener("submit", async (e) => {
+async function handleAddWorkerSubmit(e) {
   e.preventDefault();
-  const message = el.chatInput.value.trim();
-  if (!message) return;
-  el.chatInput.value = "";
-  await sendMessage(message, { fromUser: true });
-});
+  hideError(el.addWorkerError);
 
-async function sendMessage(message, { fromUser }) {
-  if (fromUser) {
-    appendUserBubble(message);
-  }
+  const payload = {
+    worker_id: document.getElementById("awWorkerId").value.trim(),
+    work_type: document.getElementById("awWorkType").value,
+    work_start: document.getElementById("awStart").value,
+    work_end: document.getElementById("awEnd").value,
+    location: document.getElementById("awLocation").value.trim(),
+  };
 
-  el.sendBtn.disabled = true;
-  const typingEl = appendTypingIndicator();
-  scrollToBottom();
-
-  try {
-    const res = await api("/chat", { method: "POST", body: { worker_id: workerId, message } });
-    typingEl.remove();
-
-    if (res.escalate) {
-      appendAlertCard(res.reply);
-    } else {
-      appendAssistantBubble(res.reply);
-    }
-
-    setRiskLevel(res.risk_level, { animate: true });
-    renderConditions(res.temperature_c, res.feels_like_c, res.humidity_pct);
-    // ChatResponse always carries the latest known schedule, fresh or
-    // carried forward from an earlier turn - only re-render (and reset the
-    // "got it") when it's actually different from what's already shown.
-    if (res.schedule && res.schedule.length && JSON.stringify(res.schedule) !== JSON.stringify(currentSchedule)) {
-      renderSchedule(res.schedule);
-      renderAcknowledged(false);
-    }
-  } catch (err) {
-    typingEl.remove();
-    appendErrorBubble(err.message || "Couldn't reach Solaris. Check your connection and try again.");
-  } finally {
-    el.sendBtn.disabled = false;
-    scrollToBottom();
-  }
-}
-
-function renderStoredTurn(turn) {
-  if (turn.role === "user") {
-    appendUserBubble(turn.content, { animate: false });
-  } else {
-    appendAssistantBubble(turn.content, { animate: false });
-  }
-}
-
-function appendUserBubble(text, { animate = true } = {}) {
-  const msg = document.createElement("div");
-  msg.className = "msg msg-user";
-  if (!animate) msg.style.animation = "none";
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = text;
-  msg.appendChild(bubble);
-  el.messageList.appendChild(msg);
-  scrollToBottom();
-}
-
-function appendAssistantBubble(text, { animate = true } = {}) {
-  const msg = document.createElement("div");
-  msg.className = "msg msg-assistant";
-  if (!animate) msg.style.animation = "none";
-  msg.innerHTML = `<div class="avatar">${ICONS.assistant}</div>`;
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = text;
-  msg.appendChild(bubble);
-  el.messageList.appendChild(msg);
-  scrollToBottom();
-}
-
-function appendAlertCard(text) {
-  const msg = document.createElement("div");
-  msg.className = "msg msg-escalate";
-  msg.innerHTML = `
-    <div class="alert-card">
-      <div class="alert-icon">${ICONS.alert}</div>
-      <div class="alert-body">
-        <strong>Seek care now</strong>
-        <p></p>
-      </div>
-    </div>`;
-  msg.querySelector(".alert-body p").textContent = text;
-  el.messageList.appendChild(msg);
-}
-
-function appendErrorBubble(text) {
-  const msg = document.createElement("div");
-  msg.className = "msg msg-assistant msg-error";
-  msg.innerHTML = `<div class="avatar">${ICONS.assistant}</div>`;
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = text;
-  msg.appendChild(bubble);
-  el.messageList.appendChild(msg);
-}
-
-function appendTypingIndicator() {
-  const msg = document.createElement("div");
-  msg.className = "msg msg-assistant msg-typing";
-  msg.innerHTML = `
-    <div class="avatar">${ICONS.assistant}</div>
-    <div class="bubble typing-dots"><span></span><span></span><span></span></div>`;
-  el.messageList.appendChild(msg);
-  return msg;
-}
-
-function setRiskLevel(level, { animate }) {
-  const resolved = level && RISK_LABELS[level] ? level : level === null ? null : "unknown";
-  if (resolved === null) {
-    el.riskBadge.dataset.level = "";
-    el.riskLabel.textContent = "Awaiting check-in";
+  if (!payload.worker_id || !payload.work_type || !payload.location) {
+    showError(el.addWorkerError, "Please fill in every field.");
     return;
   }
-  el.riskBadge.dataset.level = resolved === "unknown" ? "" : resolved;
-  el.riskLabel.textContent = RISK_LABELS[resolved];
 
-  if (animate) {
-    el.riskBadge.classList.remove("risk-updated");
-    // Force reflow so the animation can restart.
-    void el.riskBadge.offsetWidth;
-    el.riskBadge.classList.add("risk-updated");
+  setButtonLoading(el.addWorkerSubmit, true);
+  try {
+    await api("/onboarding", { method: "POST", body: payload });
+    rememberWorker(payload);
+    setActiveWorker(payload.worker_id);
+    closeSwitcher();
+    showApp();
+    resetDashboard();
+    renderWorkerPill(payload);
+    activeProfile = payload;
+    await sendMessage("Checking in for today", { fromUser: false });
+  } catch (err) {
+    showError(el.addWorkerError, err.message || "Something went wrong. Please try again.");
+  } finally {
+    setButtonLoading(el.addWorkerSubmit, false);
   }
 }
 
-const HUMIDITY_GAUGE_CIRCUMFERENCE = 263.89; // 2 * PI * r(42), matches style.css
+// ---------------------------------------------------------------------
+// Worker switcher
+// ---------------------------------------------------------------------
 
-function renderConditions(temperatureC, feelsLikeC, humidityPct) {
+function openSwitcher() {
+  renderWorkerList();
+  el.addWorkerForm.hidden = true;
+  el.btnShowAddWorker.hidden = false;
+  el.addWorkerForm.reset();
+  hideError(el.addWorkerError);
+  el.switcherModal.classList.add("active");
+}
+
+function closeSwitcher() {
+  el.switcherModal.classList.remove("active");
+}
+
+function renderWorkerList() {
+  const known = loadKnownWorkers();
+  el.workerList.innerHTML = "";
+
+  if (!known.length) {
+    el.workerList.innerHTML = `<p class="worker-list-empty">No other workers yet.</p>`;
+    return;
+  }
+
+  for (const w of known) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "worker-row" + (w.worker_id === activeWorkerId ? " is-active" : "");
+    row.innerHTML = `
+      <div class="worker-avatar">👷</div>
+      <div class="worker-row-info">
+        <span class="worker-row-name">${escapeHtml(w.worker_id)}</span>
+        <span class="worker-row-meta">${escapeHtml(titleCase(w.work_type))} • ${escapeHtml(w.location)}</span>
+      </div>
+      ${w.worker_id === activeWorkerId ? '<span class="worker-row-active-tag">Active</span>' : ""}
+    `;
+    row.addEventListener("click", () => switchToWorker(w.worker_id));
+    el.workerList.appendChild(row);
+  }
+}
+
+async function switchToWorker(workerId) {
+  if (workerId === activeWorkerId) {
+    closeSwitcher();
+    return;
+  }
+  try {
+    const status = await api(`/worker/${encodeURIComponent(workerId)}/status`, { method: "GET" });
+    if (!status.onboarded) {
+      forgetWorker(workerId);
+      renderWorkerList();
+      return;
+    }
+    setActiveWorker(workerId);
+    closeSwitcher();
+    resetDashboard();
+    hydrateFromStatus(status);
+  } catch (err) {
+    console.error("Failed to switch worker", err);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Dashboard hydrate / reset
+// ---------------------------------------------------------------------
+
+function resetDashboard() {
+  el.chatHistory.innerHTML = "";
+  el.scheduleList.innerHTML = "";
+  el.scheduleList.hidden = true;
+  el.ackBtn.hidden = true;
+  el.escalationBanner.hidden = true;
+  currentSchedule = null;
+  hydrationTargetMl = null;
+
+  // Clear every widget back to a neutral/loading state - otherwise, while a
+  // new worker's first check-in is still in flight, their dashboard would
+  // briefly show the *previous* worker's stale weather/risk/hydration data
+  // under the new worker's name.
+  renderRisk(null, false);
+  el.heatIndexVal.textContent = "--";
+  el.gaugeProgress.style.strokeDashoffset = String(GAUGE_CIRCUMFERENCE);
+  el.locationVal.textContent = "—";
+  el.tempVal.textContent = "—°C";
+  el.humidityVal.textContent = "—%";
+  el.peakHourVal.textContent = "—:00";
+  el.nextStepVal.textContent = "—";
+  el.nextStepSubtext.textContent = "No plan yet";
+  el.waterTargetVal.textContent = "— ml/hr";
+  el.hydrationCurrentText.textContent = "0 ml logged";
+  el.hydrationBarFill.style.width = "0%";
+  el.hydrationFill.setAttribute("y", "90");
+  el.hydrationFill.setAttribute("height", "0");
+}
+
+function hydrateFromStatus(status) {
+  activeProfile = status.profile;
+  renderWorkerPill(status.profile);
+  renderRisk(status.risk_level, false);
+  renderWeather(status.temperature_c, status.feels_like_c, status.humidity_pct, status.peak_hour ?? status.peak_heat_hour, status.profile);
+  hydrationTargetMl = status.hydration_target_ml;
+  renderHydration(status.hydration_logged_ml, status.hydration_target_ml, { animate: false });
+
+  if (status.schedule && status.schedule.length) {
+    renderSchedule(status.schedule);
+    renderAcknowledged(status.acknowledged);
+  }
+
+  for (const turn of status.history) {
+    if (turn.role === "user") appendUserMessage(turn.content, { animate: false });
+    else appendBotMessage(turn.content, { escalate: false, animate: false });
+  }
+  scrollChatToBottom();
+}
+
+function renderWorkerPill(profile) {
+  el.workerPillName.textContent = profile.worker_id;
+  el.workerPillRole.textContent = `${titleCase(profile.work_type)} • ${profile.location}`;
+}
+
+// ---------------------------------------------------------------------
+// Risk badge + gauge + weather stats
+// ---------------------------------------------------------------------
+
+function renderRisk(riskLevel, escalate) {
+  const level = riskLevel && RISK_LABELS[riskLevel] ? riskLevel : "unknown";
+  el.heatRiskBadge.className = "badge-risk " + level + (escalate ? " escalate" : "");
+  el.heatRiskBadgeText.textContent = RISK_LABELS[level];
+}
+
+function renderWeather(temperatureC, feelsLikeC, humidityPct, peakHour, profile) {
   if (temperatureC == null) return;
 
-  el.tempValue.textContent = Math.round(temperatureC);
-  el.feelsValue.textContent = Math.round(feelsLikeC);
-  el.humidityValue.textContent = Math.round(humidityPct);
+  el.heatIndexVal.textContent = Math.round(feelsLikeC);
+  el.tempVal.textContent = `${Math.round(temperatureC)}°C`;
+  el.humidityVal.textContent = `${Math.round(humidityPct)}%`;
+  el.locationVal.textContent = profile ? profile.location : "—";
+  el.peakHourVal.textContent = peakHour != null ? `${String(peakHour).padStart(2, "0")}:00` : "—:00";
 
-  const fraction = Math.max(0, Math.min(1, humidityPct / 100));
-  el.humidityGaugeFill.style.strokeDashoffset = String(HUMIDITY_GAUGE_CIRCUMFERENCE * (1 - fraction));
-
-  el.conditionsCard.hidden = false;
+  const fraction = Math.min(Math.max((feelsLikeC - GAUGE_MIN_C) / (GAUGE_MAX_C - GAUGE_MIN_C), 0), 1);
+  el.gaugeProgress.style.strokeDashoffset = String(GAUGE_CIRCUMFERENCE * (1 - fraction));
 }
+
+function renderEscalation(escalate, message) {
+  if (escalate) {
+    el.escalationBanner.hidden = false;
+    el.escalationText.textContent = message;
+  } else {
+    el.escalationBanner.hidden = true;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Schedule / "Today's plan"
+// ---------------------------------------------------------------------
 
 function renderSchedule(schedule) {
   currentSchedule = schedule;
@@ -343,7 +475,8 @@ function renderSchedule(schedule) {
     el.scheduleList.appendChild(li);
   }
 
-  el.scheduleCard.hidden = false;
+  el.scheduleList.hidden = false;
+  el.ackBtn.hidden = false;
   updateSchedulePassedState();
 }
 
@@ -351,25 +484,24 @@ function updateSchedulePassedState() {
   if (!currentSchedule || !currentSchedule.length) return;
 
   const nowMinutes = nowMinutesIST();
-  let passedCount = 0;
-  let nextStep = null;
+  let passed = 0;
+  let next = null;
 
   for (const li of el.scheduleList.children) {
     const stepMinutes = minutesSinceMidnight(li.dataset.time);
-    const passed = stepMinutes <= nowMinutes;
-    li.classList.toggle("step-passed", passed);
-    if (passed) passedCount += 1;
-    else if (!nextStep) nextStep = li.dataset.time;
+    const isPassed = stepMinutes <= nowMinutes;
+    li.classList.toggle("step-passed", isPassed);
+    if (isPassed) passed += 1;
+    else if (!next) next = { time: li.dataset.time, action: li.querySelector(".step-action").textContent };
   }
 
-  const total = currentSchedule.length;
-  const fillFraction = total ? passedCount / total : 0;
-  const bottleInnerHeight = 82; // 90 viewBox height minus ~8px base margin
-  const fillHeight = bottleInnerHeight * fillFraction;
-  el.hydrationFill.setAttribute("y", String(90 - fillHeight));
-  el.hydrationFill.setAttribute("height", String(fillHeight));
-
-  el.hydrationNext.textContent = nextStep ? `Next: ${nextStep}` : "Shift plan complete";
+  if (next) {
+    el.nextStepVal.textContent = next.time;
+    el.nextStepSubtext.textContent = next.action;
+  } else {
+    el.nextStepVal.textContent = "Done";
+    el.nextStepSubtext.textContent = "Shift plan complete";
+  }
 }
 
 function minutesSinceMidnight(hhmm) {
@@ -377,10 +509,9 @@ function minutesSinceMidnight(hhmm) {
   return h * 60 + m;
 }
 
-// The backend grounds schedule times in Asia/Kolkata (app.config.local_now),
-// regardless of where the browser's system clock thinks it is - comparing
-// against the browser's local time would misjudge which steps have passed
-// for anyone not physically in IST (which, on a dev machine, is likely).
+// The backend grounds schedule times in Asia/Kolkata (app.config.local_now).
+// Comparing against the browser's own local time would misjudge which
+// steps have passed for anyone not physically in IST.
 function nowMinutesIST() {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -393,52 +524,239 @@ function nowMinutesIST() {
   return hour * 60 + minute;
 }
 
+setInterval(updateSchedulePassedState, 60000);
+
 function renderAcknowledged(acknowledged) {
   el.ackBtn.classList.toggle("is-acknowledged", acknowledged);
   el.ackBtn.disabled = acknowledged;
-  el.ackBtn.querySelector(".ack-btn-label").textContent = acknowledged ? "Got it — noted" : "Got it";
+  el.ackBtnLabel.textContent = acknowledged ? "Got it — noted" : "Got it";
 }
 
-el.ackBtn.addEventListener("click", async () => {
-  if (!workerId) return;
+async function handleAcknowledge() {
+  if (!activeWorkerId) return;
   try {
-    await api(`/worker/${encodeURIComponent(workerId)}/acknowledge`, { method: "POST" });
+    await api(`/worker/${encodeURIComponent(activeWorkerId)}/acknowledge`, { method: "POST" });
     renderAcknowledged(true);
   } catch (err) {
     console.error("Failed to record acknowledgment", err);
   }
-});
-
-// Time keeps moving even without a new message - keep the bottle/step
-// states current while the tab is open.
-setInterval(updateSchedulePassedState, 60000);
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
 }
+
+// ---------------------------------------------------------------------
+// Hydration (animated bottle + bar, real logged intake)
+// ---------------------------------------------------------------------
+
+function renderHydration(loggedMl, targetMl, { animate = true } = {}) {
+  const target = targetMl || 2000;
+  const fraction = Math.min(loggedMl / target, 1);
+
+  el.waterTargetVal.textContent = hydrationTargetMl ? `${Math.round(hydrationTargetMl / _shiftHoursGuess())} ml/hr` : "— ml/hr";
+  el.hydrationCurrentText.textContent = `${loggedMl} ml / ${target} ml today`;
+  el.hydrationBarFill.style.width = `${Math.round(fraction * 100)}%`;
+
+  const bottleInnerHeight = 82;
+  const fillHeight = bottleInnerHeight * fraction;
+  el.hydrationFill.setAttribute("y", String(90 - fillHeight));
+  el.hydrationFill.setAttribute("height", String(fillHeight));
+
+  if (animate) {
+    el.hydrationFill.classList.remove("just-logged");
+    void el.hydrationFill.offsetWidth;
+    el.hydrationFill.classList.add("just-logged");
+  }
+}
+
+function _shiftHoursGuess() {
+  if (!activeProfile) return 8;
+  const [sh, sm] = activeProfile.work_start.split(":").map(Number);
+  const [eh, em] = activeProfile.work_end.split(":").map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60;
+  return Math.max(mins / 60, 1);
+}
+
+async function logHydration(amountMl) {
+  if (!activeWorkerId) return;
+  el.btnLogSip.disabled = true;
+  try {
+    const res = await api(`/worker/${encodeURIComponent(activeWorkerId)}/hydration`, {
+      method: "POST",
+      body: { amount_ml: amountMl },
+    });
+    renderHydration(res.hydration_logged_ml, hydrationTargetMl, { animate: true });
+  } catch (err) {
+    console.error("Failed to log hydration", err);
+  } finally {
+    el.btnLogSip.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------
+
+async function handleChatSubmit(e) {
+  e.preventDefault();
+  const message = el.chatInput.value.trim();
+  if (!message) return;
+  el.chatInput.value = "";
+  await sendMessage(message, { fromUser: true });
+}
+
+async function sendMessage(message, { fromUser }) {
+  if (fromUser) appendUserMessage(message);
+
+  el.btnSendMessage.disabled = true;
+  const typingEl = appendTypingIndicator();
+  scrollChatToBottom();
+
+  try {
+    const res = await api("/chat", { method: "POST", body: { worker_id: activeWorkerId, message } });
+    typingEl.remove();
+
+    appendBotMessage(res.reply, { escalate: res.escalate });
+    renderRisk(res.risk_level, res.escalate);
+    renderEscalation(res.escalate, res.reply);
+    renderWeather(res.temperature_c, res.feels_like_c, res.humidity_pct, res.peak_heat_hour, activeProfile);
+    hydrationTargetMl = res.hydration_target_ml;
+    renderHydration(res.hydration_logged_ml, res.hydration_target_ml, { animate: false });
+
+    if (res.schedule && res.schedule.length && JSON.stringify(res.schedule) !== JSON.stringify(currentSchedule)) {
+      renderSchedule(res.schedule);
+      renderAcknowledged(false);
+    }
+
+    if (el.prismDrawer.classList.contains("open")) loadPrismTraces();
+  } catch (err) {
+    typingEl.remove();
+    appendBotMessage(err.message || "Couldn't reach Solaris. Check your connection and try again.", { escalate: false });
+  } finally {
+    el.btnSendMessage.disabled = false;
+    scrollChatToBottom();
+  }
+}
+
+function appendUserMessage(text, { animate = true } = {}) {
+  const msg = document.createElement("div");
+  msg.className = "chat-msg user";
+  if (!animate) msg.style.animation = "none";
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+  bubble.textContent = text;
+  msg.appendChild(bubble);
+  el.chatHistory.appendChild(msg);
+  scrollChatToBottom();
+}
+
+function appendBotMessage(text, { escalate = false, animate = true } = {}) {
+  const msg = document.createElement("div");
+  msg.className = "chat-msg bot";
+  if (!animate) msg.style.animation = "none";
+
+  const avatar = document.createElement("div");
+  avatar.className = "chat-avatar";
+  avatar.textContent = "☀️";
+  msg.appendChild(avatar);
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+
+  if (escalate) {
+    const card = document.createElement("div");
+    card.className = "symptom-alert-card";
+    card.innerHTML = `<h5>🚨 Seek care now</h5><p></p>`;
+    card.querySelector("p").textContent = text;
+    bubble.appendChild(card);
+  } else {
+    bubble.textContent = text;
+  }
+
+  msg.appendChild(bubble);
+  el.chatHistory.appendChild(msg);
+  scrollChatToBottom();
+}
+
+function appendTypingIndicator() {
+  const msg = document.createElement("div");
+  msg.className = "chat-msg bot";
+  msg.innerHTML = `<div class="chat-avatar">☀️</div><div class="chat-bubble is-typing">Solaris is reasoning…</div>`;
+  el.chatHistory.appendChild(msg);
+  return msg;
+}
+
+function scrollChatToBottom() {
+  el.chatHistory.scrollTop = el.chatHistory.scrollHeight;
+}
+
+// ---------------------------------------------------------------------
+// PRISM live trace log
+// ---------------------------------------------------------------------
+
+async function loadPrismTraces() {
+  if (!activeWorkerId) return;
+  try {
+    const data = await api(`/worker/${encodeURIComponent(activeWorkerId)}/traces`, { method: "GET" });
+    el.prismSessionIdDisplay.textContent = data.session_id;
+
+    if (!data.traces.length) {
+      el.prismTracesContainer.innerHTML = `<div class="prism-empty">No traces yet — send a message to Solaris.</div>`;
+      return;
+    }
+
+    el.prismTracesContainer.innerHTML = data.traces
+      .slice()
+      .reverse()
+      .map((trace, idx) => {
+        const outputPreview = trace.output.length > 140 ? trace.output.slice(0, 140) + "…" : trace.output;
+        return `
+        <div class="prism-trace-card">
+          <div class="prism-trace-meta">
+            <span>#${data.traces.length - idx} · ${escapeHtml(trace.model)}</span>
+            <span>${trace.latency_ms}ms</span>
+          </div>
+          <div style="color:#c2410c;"><strong>Input:</strong> ${escapeHtml(trace.input)}</div>
+          <div style="color:#0f766e;"><strong>Output:</strong> ${escapeHtml(outputPreview)}</div>
+          <div style="color:${trace.delivered_to_prism ? "#0d9488" : "#94a3b8"};">
+            ${trace.delivered_to_prism ? "✓ delivered to PRISM" : "○ PRISM tracing not configured"}
+          </div>
+          <details style="margin-top:6px; color:#94a3b8; cursor:pointer;">
+            <summary>Full JSON</summary>
+            <div class="prism-json">${escapeHtml(JSON.stringify(trace, null, 2))}</div>
+          </details>
+        </div>`;
+      })
+      .join("");
+  } catch (err) {
+    console.error("Failed to load PRISM traces:", err);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------
 
 function setButtonLoading(btn, isLoading) {
   btn.classList.toggle("is-loading", isLoading);
   btn.disabled = isLoading;
 }
 
-function showOnboardingError(text) {
-  el.onboardingError.textContent = text;
-  el.onboardingError.hidden = false;
+function showError(el_, text) {
+  el_.textContent = text;
+  el_.hidden = false;
 }
 
-function hideOnboardingError() {
-  el.onboardingError.hidden = true;
-}
-
-function scrollToBottom() {
-  el.messageList.scrollTop = el.messageList.scrollHeight;
+function hideError(el_) {
+  el_.hidden = true;
 }
 
 function titleCase(str) {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
 }
 
 async function api(path, { method = "GET", body } = {}) {

@@ -19,8 +19,12 @@ _RISK_LEVELS: dict[str, str] = {}
 _SCHEDULES: dict[str, list[dict]] = {}
 _ACKNOWLEDGED: dict[str, bool] = {}
 _WEATHER: dict[str, dict] = {}
+_TRACES: dict[str, list[dict]] = {}
+_HYDRATION: dict[str, int] = {}
 
 _USE_KV = kv.is_configured()
+
+MAX_TRACES_PER_SESSION = 20
 
 
 async def save_worker(profile: WorkerProfile) -> None:
@@ -108,3 +112,33 @@ async def set_weather(session_id: str, weather: dict) -> None:
         await kv.set_json(f"weather:{session_id}", weather)
     else:
         _WEATHER[session_id] = weather
+
+
+async def get_traces(session_id: str) -> list[dict]:
+    if _USE_KV:
+        return await kv.get_json(f"traces:{session_id}") or []
+    return _TRACES.get(session_id, [])
+
+
+async def append_trace(session_id: str, trace: dict) -> None:
+    traces = await get_traces(session_id)
+    traces = [*traces, trace][-MAX_TRACES_PER_SESSION:]
+    if _USE_KV:
+        await kv.set_json(f"traces:{session_id}", traces)
+    else:
+        _TRACES[session_id] = traces
+
+
+async def get_hydration_ml(session_id: str) -> int:
+    if _USE_KV:
+        return await kv.get_json(f"hydration:{session_id}") or 0
+    return _HYDRATION.get(session_id, 0)
+
+
+async def add_hydration_ml(session_id: str, amount_ml: int) -> int:
+    total = await get_hydration_ml(session_id) + amount_ml
+    if _USE_KV:
+        await kv.set_json(f"hydration:{session_id}", total)
+    else:
+        _HYDRATION[session_id] = total
+    return total

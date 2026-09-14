@@ -1,263 +1,360 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Solaris — Heat Safety Companion</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='%230E5E63'/%3E%3Cg stroke='%230E5E63' stroke-width='2.4' stroke-linecap='round'%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='16' y1='26' x2='16' y2='30'/%3E%3Cline x1='2' y1='16' x2='6' y2='16'/%3E%3Cline x1='26' y1='16' x2='30' y2='16'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <meta name="description" content="AI-powered Heat Safety Companion for outdoor and construction workers. Real-time heat risk reasoning and PRISM evaluation.">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
 </head>
 <body>
 
-  <div class="app-shell">
-
-    <!-- ===================== ONBOARDING ===================== -->
-    <section id="onboarding-screen" class="screen onboarding-screen">
-      <div class="onboarding-card" id="onboarding-card">
-        <div class="brand brand-large">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" width="34" height="34" fill="none">
-              <circle cx="16" cy="16" r="8" fill="currentColor"/>
-              <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                <line x1="16" y1="1.5" x2="16" y2="6"/>
-                <line x1="16" y1="26" x2="16" y2="30.5"/>
-                <line x1="1.5" y1="16" x2="6" y2="16"/>
-                <line x1="26" y1="16" x2="30.5" y2="16"/>
-                <line x1="6" y1="6" x2="9" y2="9"/>
-                <line x1="23" y1="23" x2="26" y2="26"/>
-                <line x1="26" y1="6" x2="23" y2="9"/>
-                <line x1="9" y1="23" x2="6" y2="26"/>
-              </g>
-            </svg>
-          </span>
-          <div>
-            <h1>Solaris</h1>
-            <p class="tagline">Heat Safety Companion</p>
-          </div>
-        </div>
-
-        <p class="onboarding-intro">
-          Tell us about your shift. Every day you check in, Solaris reads today's real
-          weather and gives you a break-and-hydration plan built for the heat you're
-          actually working in.
-        </p>
-
-        <form id="onboarding-form" novalidate>
-          <div class="field">
-            <label for="worker_id">Your name or worker ID</label>
-            <input id="worker_id" name="worker_id" type="text" placeholder="e.g. Ramesh K." required autocomplete="off" />
-          </div>
-
-          <div class="field">
-            <label for="work_type">Work type</label>
-            <select id="work_type" name="work_type" required>
-              <option value="" disabled selected>Select your work type</option>
-              <option value="construction - general labor">General labor</option>
-              <option value="construction - rebar/concrete">Rebar / concrete</option>
-              <option value="roofing">Roofing</option>
-              <option value="masonry">Masonry</option>
-              <option value="landscaping">Landscaping</option>
-              <option value="electrical/mechanical">Electrical / mechanical</option>
-              <option value="delivery/gig work">Delivery / gig work</option>
-              <option value="other">Other outdoor work</option>
-            </select>
-          </div>
-
-          <div class="field-row">
-            <div class="field">
-              <label for="work_start">Shift start</label>
-              <input id="work_start" name="work_start" type="time" value="07:00" required />
-            </div>
-            <div class="field">
-              <label for="work_end">Shift end</label>
-              <input id="work_end" name="work_end" type="time" value="16:00" required />
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="location">City / area</label>
-            <input id="location" name="location" type="text" placeholder="e.g. Chennai" required autocomplete="off" />
-          </div>
-
-          <button type="submit" class="btn btn-primary btn-block" id="onboarding-submit">
-            <span class="btn-label">Start my check-in</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
-          </button>
-
-          <p class="form-error" id="onboarding-error" role="alert" hidden></p>
-        </form>
-      </div>
-    </section>
-
-    <!-- ===================== RESUME / NEW ===================== -->
-    <section id="resume-screen" class="screen resume-screen" hidden>
-      <div class="resume-card">
-        <div class="brand brand-large">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" width="34" height="34" fill="none">
-              <circle cx="16" cy="16" r="8" fill="currentColor"/>
-              <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                <line x1="16" y1="1.5" x2="16" y2="6"/>
-                <line x1="16" y1="26" x2="16" y2="30.5"/>
-                <line x1="1.5" y1="16" x2="6" y2="16"/>
-                <line x1="26" y1="16" x2="30.5" y2="16"/>
-                <line x1="6" y1="6" x2="9" y2="9"/>
-                <line x1="23" y1="23" x2="26" y2="26"/>
-                <line x1="26" y1="6" x2="23" y2="9"/>
-                <line x1="9" y1="23" x2="6" y2="26"/>
-              </g>
-            </svg>
-          </span>
-          <div>
-            <h1>Solaris</h1>
-            <p class="tagline">Heat Safety Companion</p>
-          </div>
-        </div>
-
-        <p class="resume-intro">Welcome back<span id="resume-greeting-name"></span>.</p>
-
-        <div class="resume-actions">
-          <button type="button" class="btn btn-primary btn-block" id="resume-continue-btn">
-            <span id="resume-continue-label">Continue</span>
-          </button>
-          <button type="button" class="btn btn-ghost btn-block" id="resume-new-btn">Start a new check-in</button>
+  <!-- ===================== FULL-SCREEN ONBOARDING (first visit) ===================== -->
+  <section class="onboarding-screen" id="onboardingScreen" hidden>
+    <div class="onboarding-card">
+      <div class="onboarding-brand">
+        <div class="logo-badge">☀️</div>
+        <div class="brand-text">
+          <h1>Solaris</h1>
+          <div class="brand-tag">Heat Safety Companion</div>
         </div>
       </div>
-    </section>
+      <p class="onboarding-intro">
+        Tell us about your shift. Every day you check in, Solaris reads today's real
+        weather and gives you a break-and-hydration plan built for the heat you're
+        actually working in.
+      </p>
 
-    <!-- ===================== MAIN APP ===================== -->
-    <section id="app-screen" class="screen app-screen" hidden>
-      <header class="app-header">
-        <div class="brand brand-compact">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" width="22" height="22" fill="none">
-              <circle cx="16" cy="16" r="8" fill="currentColor"/>
-              <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                <line x1="16" y1="1.5" x2="16" y2="6"/>
-                <line x1="16" y1="26" x2="16" y2="30.5"/>
-                <line x1="1.5" y1="16" x2="6" y2="16"/>
-                <line x1="26" y1="16" x2="30.5" y2="16"/>
-                <line x1="6" y1="6" x2="9" y2="9"/>
-                <line x1="23" y1="23" x2="26" y2="26"/>
-                <line x1="26" y1="6" x2="23" y2="9"/>
-                <line x1="9" y1="23" x2="6" y2="26"/>
-              </g>
-            </svg>
-          </span>
-          <span class="brand-word">Solaris</span>
+      <form id="onboardingForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="obWorkerId">Your name or worker ID</label>
+          <input type="text" id="obWorkerId" class="form-input" placeholder="e.g. Ramesh K." required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="obWorkType">Trade / work type</label>
+          <select id="obWorkType" class="form-select" required>
+            <option value="" disabled selected>Select your work type</option>
+            <option value="construction - general labor">General labor</option>
+            <option value="construction - rebar/concrete">Rebar / concrete</option>
+            <option value="roofing">Roofing</option>
+            <option value="masonry">Masonry</option>
+            <option value="landscaping">Landscaping</option>
+            <option value="electrical/mechanical">Electrical / mechanical</option>
+            <option value="delivery/gig work">Delivery / gig work</option>
+            <option value="other">Other outdoor work</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="obLocation">Jobsite city / area</label>
+          <input type="text" id="obLocation" class="form-input" placeholder="e.g. Chennai" required autocomplete="off" />
+        </div>
+        <div class="field-row">
+          <div class="form-group">
+            <label class="form-label" for="obStart">Shift start</label>
+            <input type="time" id="obStart" class="form-input" value="07:00" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="obEnd">Shift end</label>
+            <input type="time" id="obEnd" class="form-input" value="16:00" required />
+          </div>
+        </div>
+        <button type="submit" class="btn-primary-modal" id="onboardingSubmit">
+          <span class="btn-label">Start my check-in</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+        <p class="form-error" id="onboardingError" role="alert" hidden></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div id="appRoot" hidden>
+
+    <header class="app-header">
+      <div class="header-container">
+        <div class="brand-wrapper">
+          <div class="logo-badge">☀️</div>
+          <div class="brand-text">
+            <h1>Solaris</h1>
+            <div class="brand-tag">Heat Safety Companion</div>
+          </div>
         </div>
 
-        <div class="header-right">
-          <div class="risk-badge" id="risk-badge" data-level="">
-            <span class="risk-dot" aria-hidden="true"></span>
-            <span class="risk-label" id="risk-label">Awaiting check-in</span>
+        <div class="header-actions">
+          <div class="live-clock" id="liveClock" aria-live="off">
+            <span class="live-clock-time" id="liveClockTime">--:--:--</span>
+            <span class="live-clock-date" id="liveClockDate">IST</span>
           </div>
-          <button type="button" class="btn btn-ghost" id="switch-worker-btn">Switch worker</button>
+
+          <button class="worker-pill" id="btnOpenSwitcher" title="Switch or add a worker">
+            <div class="worker-avatar">👷</div>
+            <div class="worker-info-inline">
+              <span class="worker-name-text" id="workerPillName">—</span>
+              <span class="worker-role-text" id="workerPillRole">—</span>
+            </div>
+          </button>
+
+          <button class="btn-sos" id="btnSos" title="Emergency Heat Triage">
+            <span>🚨</span> SOS
+          </button>
+
+          <button class="btn-prism-toggle" id="btnTogglePrism" title="Toggle PRISM live trace log">
+            <span>🔬</span> PRISM Traces
+          </button>
         </div>
-      </header>
+      </div>
+    </header>
 
-      <div class="app-body">
-        <aside class="sidebar">
-          <div class="card profile-card">
-            <h2 class="card-title">Today</h2>
-            <dl class="profile-list">
-              <div class="profile-row">
-                <dt>Worker</dt>
-                <dd id="profile-worker">—</dd>
-              </div>
-              <div class="profile-row">
-                <dt>Work type</dt>
-                <dd id="profile-work-type">—</dd>
-              </div>
-              <div class="profile-row">
-                <dt>Shift</dt>
-                <dd id="profile-shift">—</dd>
-              </div>
-              <div class="profile-row">
-                <dt>Location</dt>
-                <dd id="profile-location">—</dd>
-              </div>
-            </dl>
+    <main class="main-layout">
+
+      <!-- Left Column -->
+      <section class="dashboard-left">
+
+        <!-- Thermal Risk & Live Weather Card -->
+        <div class="glass-card">
+          <div class="card-header">
+            <div class="card-title"><span>🌡️</span> Live Thermal Risk Radar</div>
+            <div class="badge-risk unknown" id="heatRiskBadge">
+              <span>●</span> <span id="heatRiskBadgeText">Awaiting check-in</span>
+            </div>
           </div>
 
-          <div class="card conditions-card" id="conditions-card" hidden>
-            <h2 class="card-title">Today's conditions</h2>
-            <div class="conditions-grid">
-              <div class="temp-display">
-                <svg class="temp-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.76V3.5a2 2 0 0 0-4 0v11.26a4 4 0 1 0 4 0Z"/></svg>
-                <div>
-                  <div class="temp-value"><span id="temp-value">—</span>°C</div>
-                  <div class="temp-feels">Feels like <span id="feels-value">—</span>°C</div>
-                </div>
-              </div>
-
-              <div class="gauge-column">
-                <div class="gauge-wrap" role="img" aria-label="Humidity">
-                  <svg class="humidity-gauge" viewBox="0 0 100 100" width="72" height="72">
-                    <circle class="gauge-track" cx="50" cy="50" r="42" />
-                    <circle class="gauge-fill" id="humidity-gauge-fill" cx="50" cy="50" r="42" />
-                  </svg>
-                  <div class="gauge-label">
-                    <span id="humidity-value">—</span><span class="gauge-pct">%</span>
-                  </div>
-                </div>
-                <span class="gauge-sublabel">Humidity</span>
+          <div class="heat-radar-grid">
+            <div class="dial-container">
+              <svg class="gauge-svg" viewBox="0 0 160 160">
+                <circle class="gauge-bg" cx="80" cy="80" r="70" />
+                <circle class="gauge-progress" id="gaugeProgress" cx="80" cy="80" r="70" />
+              </svg>
+              <div class="dial-center-text">
+                <div class="heat-index-val" id="heatIndexVal">--</div>
+                <div class="heat-index-unit">°C feels like</div>
+                <div class="heat-index-label" id="heatIndexLabel">HEAT INDEX</div>
               </div>
             </div>
 
-            <div class="hydration-wrap">
-              <svg class="hydration-bottle" viewBox="0 0 40 90" width="34" height="76" aria-hidden="true">
+            <div class="weather-stats-list">
+              <div class="stat-box">
+                <div class="stat-label"><span>📍</span> Location</div>
+                <div class="stat-value" id="locationVal">—</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label"><span>☀️</span> Ambient Temp</div>
+                <div class="stat-value" id="tempVal">—°C</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label"><span>💧</span> Relative Humidity</div>
+                <div class="stat-value" id="humidityVal">—%</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label"><span>🔥</span> Peak Heat Hour</div>
+                <div class="stat-value" id="peakHourVal">—:00</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="escalation-banner" id="escalationBanner" hidden>
+            <div class="escalation-icon">🚨</div>
+            <div class="escalation-content">
+              <h4>Heat Danger Advisory</h4>
+              <p id="escalationText">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shift Safety Protocol & Hydration Card -->
+        <div class="glass-card">
+          <div class="card-header">
+            <div class="card-title"><span>📋</span> Daily Shift Safety Protocol</div>
+          </div>
+
+          <div class="protocol-cards-grid">
+            <div class="protocol-mini-card">
+              <div class="protocol-header">
+                <div class="protocol-title"><span>⏳</span> Next Step</div>
+              </div>
+              <div class="protocol-highlight" id="nextStepVal">—</div>
+              <div class="protocol-subtext" id="nextStepSubtext">No plan yet</div>
+            </div>
+
+            <div class="protocol-mini-card">
+              <div class="protocol-header">
+                <div class="protocol-title"><span>💧</span> Hydration Rate</div>
+              </div>
+              <div class="protocol-highlight" id="waterTargetVal">— ml/hr</div>
+              <div class="protocol-subtext">Water or electrolyte fluid</div>
+            </div>
+          </div>
+
+          <ol class="schedule-list" id="scheduleList" hidden></ol>
+          <button type="button" class="btn-ack" id="ackBtn" hidden>
+            <span>✓</span> <span id="ackBtnLabel">Got it</span>
+          </button>
+
+          <!-- Interactive Hydration Tracker (animated bottle) -->
+          <div class="hydration-interactive-card" style="margin-top: 1rem;">
+            <div class="hydration-bottle-wrap">
+              <svg class="hydration-bottle" viewBox="0 0 40 90">
                 <defs>
-                  <clipPath id="bottle-clip">
+                  <linearGradient id="bottleGradient" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stop-color="#0d9488" />
+                    <stop offset="100%" stop-color="#14b8a6" />
+                  </linearGradient>
+                  <clipPath id="bottleClip">
                     <path d="M14 4h12v9l4 7v60a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V20l4-7V4Z" />
                   </clipPath>
                 </defs>
                 <path class="bottle-outline" d="M14 4h12v9l4 7v60a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V20l4-7V4Z" />
-                <rect class="bottle-fill" id="hydration-fill" x="6" y="90" width="28" height="0" clip-path="url(#bottle-clip)" />
+                <g clip-path="url(#bottleClip)" class="bottle-wave">
+                  <rect class="bottle-fill" id="hydrationFill" x="6" y="90" width="28" height="0" />
+                </g>
                 <line class="bottle-cap" x1="14" y1="4" x2="26" y2="4" />
               </svg>
-              <div class="hydration-text">
-                <span class="hydration-label">Today's plan progress</span>
-                <span class="hydration-next" id="hydration-next">—</span>
+            </div>
+            <div class="hydration-info">
+              <div class="hydration-header-row">
+                <span class="hydration-title"><span>🌊</span> Shift Hydration Log</span>
+                <span class="hydration-count-text" id="hydrationCurrentText">0 ml logged</span>
+              </div>
+              <div class="hydration-bar-wrapper">
+                <div class="hydration-bar-fill" id="hydrationBarFill"></div>
+              </div>
+              <div class="hydration-action-row">
+                <span style="font-size:0.72rem; color:var(--text-muted);">Small sips every 15–20 min prevent cramping</span>
+                <button class="btn-sip-log" id="btnLogSip">
+                  <span>+</span> Log 250ml
+                </button>
               </div>
             </div>
           </div>
+        </div>
 
-          <div class="card schedule-card" id="schedule-card" hidden>
-            <h2 class="card-title">Today's plan</h2>
-            <ol class="schedule-list" id="schedule-list"></ol>
-            <button type="button" class="btn btn-ack" id="ack-btn">
-              <svg class="ack-icon-pending" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12.5 11 15l4.5-6"/><circle cx="12" cy="12" r="9"/></svg>
-              <span class="ack-btn-label">Got it</span>
-            </button>
+      </section>
+
+      <!-- Right Column: Chat -->
+      <section class="dashboard-right">
+        <div class="glass-card chat-container">
+          <div class="card-header" style="margin-bottom:0.75rem;">
+            <div class="card-title"><span>💬</span> Heat Safety Companion</div>
+            <span style="font-size:0.72rem; color:var(--orange-dark); font-weight:700; display:flex; align-items:center; gap:4px;">
+              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--teal-primary);"></span> Online
+            </span>
           </div>
-        </aside>
 
-        <main class="chat-panel">
-          <div class="message-list" id="message-list" aria-live="polite"></div>
+          <div class="chat-history" id="chatHistory" aria-live="polite"></div>
 
-          <form class="chat-input-row" id="chat-form">
-            <input
-              type="text"
-              id="chat-input"
-              placeholder="Message Solaris…"
-              autocomplete="off"
-              required
-            />
-            <button type="submit" class="send-btn" id="send-btn" aria-label="Send message">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 2 11 13"/>
-                <path d="M22 2 15 22l-4-9-9-4 20-7Z"/>
-              </svg>
-            </button>
+          <div class="quick-chips-row">
+            <button class="chip-btn" data-msg="I can't take a break right now, what is the bare minimum harm reduction?">⚡ Can't break right now</button>
+            <button class="chip-btn" data-msg="I'm feeling dizzy and I haven't been sweating. What should I do?">🚨 Feeling dizzy / not sweating</button>
+            <button class="chip-btn" data-msg="What should I drink besides plain water for heavy sweating?">💧 Hydration & electrolytes</button>
+            <button class="chip-btn" data-msg="When is the peak heat hour during my shift today?">🕒 When is peak heat?</button>
+          </div>
+
+          <form class="chat-input-bar" id="chatForm">
+            <input type="text" class="chat-input" id="chatInput" placeholder="Ask Solaris about heat risk, breaks, or report symptoms..." autocomplete="off" required />
+            <button type="submit" class="btn-send" id="btnSendMessage" title="Send message">➤</button>
           </form>
-        </main>
-      </div>
-    </section>
+        </div>
+      </section>
 
+    </main>
+
+    <!-- PRISM Observability Drawer -->
+    <aside class="prism-drawer" id="prismDrawer">
+      <div class="prism-drawer-header">
+        <h3><span>🔬</span> PRISM Live Trace Log</h3>
+        <button class="prism-drawer-close" id="btnClosePrism">✕</button>
+      </div>
+      <div class="prism-session-line">
+        Session: <span id="prismSessionIdDisplay">—</span> | Agent: <span>solaris-heat-safety</span>
+      </div>
+      <div class="prism-body" id="prismTracesContainer">
+        <div class="prism-empty">No traces yet — send a message to Solaris.</div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ===================== Worker Switcher Modal ===================== -->
+  <div class="modal-overlay" id="switcherModal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem;">
+        <h3 style="font-family:'Outfit', sans-serif; font-size:1.2rem;">Switch worker</h3>
+        <button class="modal-close" id="btnCloseSwitcher">✕</button>
+      </div>
+
+      <div class="worker-list" id="workerList"></div>
+
+      <button type="button" class="btn-add-worker" id="btnShowAddWorker">+ Add a new worker</button>
+
+      <form id="addWorkerForm" hidden style="margin-top: 1.1rem;">
+        <div class="form-group">
+          <label class="form-label" for="awWorkerId">Name or worker ID</label>
+          <input type="text" id="awWorkerId" class="form-input" placeholder="e.g. Ramesh K." required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="awWorkType">Trade / work type</label>
+          <select id="awWorkType" class="form-select" required>
+            <option value="" disabled selected>Select your work type</option>
+            <option value="construction - general labor">General labor</option>
+            <option value="construction - rebar/concrete">Rebar / concrete</option>
+            <option value="roofing">Roofing</option>
+            <option value="masonry">Masonry</option>
+            <option value="landscaping">Landscaping</option>
+            <option value="electrical/mechanical">Electrical / mechanical</option>
+            <option value="delivery/gig work">Delivery / gig work</option>
+            <option value="other">Other outdoor work</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="awLocation">Jobsite city / area</label>
+          <input type="text" id="awLocation" class="form-input" placeholder="e.g. Chennai" required autocomplete="off" />
+        </div>
+        <div class="field-row">
+          <div class="form-group">
+            <label class="form-label" for="awStart">Shift start</label>
+            <input type="time" id="awStart" class="form-input" value="07:00" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="awEnd">Shift end</label>
+            <input type="time" id="awEnd" class="form-input" value="16:00" required />
+          </div>
+        </div>
+        <button type="submit" class="btn-primary-modal" id="addWorkerSubmit">
+          <span class="btn-label">Add & switch to this worker</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+        <p class="form-error" id="addWorkerError" role="alert" hidden></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== Emergency SOS Modal ===================== -->
+  <div class="modal-overlay" id="sosModal">
+    <div class="modal-content" style="border-color: rgba(239, 68, 68, 0.6);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <h3 style="color:#ef4444; font-family:'Outfit', sans-serif; font-size:1.3rem; display:flex; align-items:center; gap:6px;">
+          <span>🚨</span> Emergency Heat Triage
+        </h3>
+        <button class="modal-close" id="btnCloseSos">✕</button>
+      </div>
+      <div style="font-size:0.86rem; color:var(--text-secondary); margin-bottom:1rem; line-height:1.5;">
+        If you or a coworker are experiencing severe dizziness, confusion, fainting, or have stopped sweating:
+      </div>
+      <div class="sos-steps">
+        <ol>
+          <li><strong>STOP WORK</strong> immediately and alert a coworker or supervisor.</li>
+          <li><strong>MOVE TO SHADE</strong> or an air-conditioned area.</li>
+          <li><strong>LOOSEN CLOTHING</strong>: remove hardhat, vest, heavy gear.</li>
+          <li><strong>COOL DOWN</strong>: apply cool water or wet cloths to neck, armpits, and groin.</li>
+          <li><strong>HYDRATE</strong>: sip cool water slowly — don't chug.</li>
+        </ol>
+      </div>
+      <div class="sos-disclaimer">
+        General workplace safety guidance only, not a medical diagnosis. Call emergency services immediately for unconsciousness or confusion.
+      </div>
+      <a class="btn-sos btn-sos-call" href="tel:112">📞 Call Emergency Dispatch (112)</a>
+    </div>
   </div>
 
   <script src="/app.js"></script>

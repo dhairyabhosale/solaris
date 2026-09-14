@@ -46,6 +46,9 @@ class ChatResponse(BaseModel):
     temperature_c: Optional[float] = None
     feels_like_c: Optional[float] = None
     humidity_pct: Optional[int] = None
+    peak_heat_hour: Optional[int] = None  # 0-23, today's forecast hour with the highest temperature
+    hydration_logged_ml: int = 0
+    hydration_target_ml: Optional[int] = None
 
 
 class ChatTurn(BaseModel):
@@ -63,4 +66,26 @@ class WorkerStatus(BaseModel):
     temperature_c: Optional[float] = None
     feels_like_c: Optional[float] = None
     humidity_pct: Optional[int] = None
+    peak_heat_hour: Optional[int] = None
+    hydration_logged_ml: int = 0
+    hydration_target_ml: Optional[int] = None
     history: list[ChatTurn] = []
+
+
+class HydrationLogRequest(BaseModel):
+    amount_ml: int = 250
+
+
+class TraceEntry(BaseModel):
+    timestamp: str
+    input: str
+    output: str
+    latency_ms: int
+    model: str
+    delivered_to_prism: bool
+
+
+class TraceLog(BaseModel):
+    session_id: str
+    agent_id: str
+    traces: list[TraceEntry]

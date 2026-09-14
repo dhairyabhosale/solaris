@@ -27,7 +27,8 @@ import httpx
 import openai
 from openai import AsyncOpenAI
 
-from app.config import settings
+from app.config import local_now, settings
+from app.services import store
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +111,23 @@ async def _emit_trace(
     output_message: str,
     latency_ms: int,
 ) -> None:
-    """POST one trace to PRISM. Best-effort: the worker's reply is already
-    decided by the time this runs, so a slow/down PRISM must never affect it."""
+    """Record a trace locally (powers the app's own "Live Trace Log"
+    panel, independent of PRISM), then best-effort POST it to PRISM too.
+    The worker's reply is already decided by the time this runs, so a
+    slow/down PRISM must never affect it."""
+    user_turns = [m["content"] for m in input_messages if m["role"] == "user"]
+    await store.append_trace(
+        session_id,
+        {
+            "timestamp": local_now().isoformat(timespec="seconds"),
+            "input": user_turns[-1] if user_turns else "",
+            "output": output_message,
+            "latency_ms": latency_ms,
+            "model": model,
+            "delivered_to_prism": bool(settings.prismtrace_api_key),
+        },
+    )
+
     if not settings.prismtrace_api_key:
         return
 
