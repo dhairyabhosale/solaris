@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -32,3 +34,18 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
+    risk_level: str  # "low" | "moderate" | "high" | "extreme" | "unknown"
+    escalate: bool
+
+
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
+class WorkerStatus(BaseModel):
+    onboarded: bool
+    profile: Optional[WorkerProfile] = None
+    session_id: Optional[str] = None
+    risk_level: Optional[str] = None
+    history: list[ChatTurn] = []

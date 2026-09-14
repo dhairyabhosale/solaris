@@ -3,6 +3,10 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 httpx
+openai
 python-dotenv
+aiofiles
+redis
+tzdata
 pytest
 pytest-asyncio

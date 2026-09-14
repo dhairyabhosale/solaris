@@ -9,7 +9,7 @@ router = APIRouter()
 @router.post("/onboarding", response_model=OnboardingResponse)
 async def onboard_worker(payload: OnboardingRequest) -> OnboardingResponse:
     profile = WorkerProfile(**payload.model_dump())
-    store.save_worker(profile)
+    await store.save_worker(profile)
 
     return OnboardingResponse(
         worker_id=profile.worker_id,

@@ -74,8 +74,9 @@ def run(base_url: str) -> None:
                 resp = client.post("/chat", json={"worker_id": worker_id, "message": message})
                 resp.raise_for_status()
                 body = resp.json()
+                flag = " [ESCALATE]" if body["escalate"] else ""
                 print(f"\n> {message}")
-                print(f"< [{body['session_id']}] {body['reply']}")
+                print(f"< [{body['session_id']}] ({body['risk_level'].upper()}){flag} {body['reply']}")
                 time.sleep(0.5)
 
 

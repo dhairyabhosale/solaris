@@ -7,9 +7,9 @@ per-day in memory so a busy day of chat traffic for the same worker
 doesn't hammer the API or make the risk assessment drift within a day.
 """
 
-from datetime import date
-
 import httpx
+
+from app.config import local_today
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -38,7 +38,7 @@ async def geocode_location(location: str) -> tuple[float, float, str]:
 
 
 async def get_current_weather(location: str) -> dict:
-    cache_key = (location, date.today().isoformat())
+    cache_key = (location, local_today().isoformat())
     if cache_key in _weather_cache:
         return _weather_cache[cache_key]
 
