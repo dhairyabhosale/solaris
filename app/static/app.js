@@ -6,10 +6,15 @@ const STORAGE_KEY = "solaris_worker_id";
 
 const el = {
   onboardingScreen: document.getElementById("onboarding-screen"),
+  resumeScreen: document.getElementById("resume-screen"),
   appScreen: document.getElementById("app-screen"),
   onboardingForm: document.getElementById("onboarding-form"),
   onboardingSubmit: document.getElementById("onboarding-submit"),
   onboardingError: document.getElementById("onboarding-error"),
+  resumeContinueLabel: document.getElementById("resume-continue-label"),
+  resumeGreetingName: document.getElementById("resume-greeting-name"),
+  resumeContinueBtn: document.getElementById("resume-continue-btn"),
+  resumeNewBtn: document.getElementById("resume-new-btn"),
   switchWorkerBtn: document.getElementById("switch-worker-btn"),
   riskBadge: document.getElementById("risk-badge"),
   riskLabel: document.getElementById("risk-label"),
@@ -17,6 +22,16 @@ const el = {
   profileWorkType: document.getElementById("profile-work-type"),
   profileShift: document.getElementById("profile-shift"),
   profileLocation: document.getElementById("profile-location"),
+  conditionsCard: document.getElementById("conditions-card"),
+  tempValue: document.getElementById("temp-value"),
+  feelsValue: document.getElementById("feels-value"),
+  humidityValue: document.getElementById("humidity-value"),
+  humidityGaugeFill: document.getElementById("humidity-gauge-fill"),
+  hydrationFill: document.getElementById("hydration-fill"),
+  hydrationNext: document.getElementById("hydration-next"),
+  scheduleCard: document.getElementById("schedule-card"),
+  scheduleList: document.getElementById("schedule-list"),
+  ackBtn: document.getElementById("ack-btn"),
   messageList: document.getElementById("message-list"),
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
@@ -37,6 +52,8 @@ const ICONS = {
 };
 
 let workerId = localStorage.getItem(STORAGE_KEY);
+let pendingResumeStatus = null;
+let currentSchedule = null;
 
 init();
 
@@ -54,12 +71,8 @@ async function init() {
       showOnboarding();
       return;
     }
-    showApp(status.profile);
-    setRiskLevel(status.risk_level || null, { animate: false });
-    for (const turn of status.history) {
-      renderStoredTurn(turn);
-    }
-    scrollToBottom();
+    pendingResumeStatus = status;
+    showResume(status.profile);
   } catch (err) {
     console.error("Failed to restore session", err);
     showOnboarding();
@@ -68,11 +81,46 @@ async function init() {
 
 function showOnboarding() {
   el.appScreen.hidden = true;
+  el.resumeScreen.hidden = true;
   el.onboardingScreen.hidden = false;
 }
 
+function showResume(profile) {
+  el.appScreen.hidden = true;
+  el.onboardingScreen.hidden = true;
+  el.resumeContinueLabel.textContent = `Continue as ${profile.worker_id}`;
+  el.resumeGreetingName.textContent = `, ${profile.worker_id}`;
+  el.resumeScreen.hidden = false;
+}
+
+el.resumeContinueBtn.addEventListener("click", () => {
+  const status = pendingResumeStatus;
+  if (!status) return;
+
+  showApp(status.profile);
+  setRiskLevel(status.risk_level || null, { animate: false });
+  renderConditions(status.temperature_c, status.feels_like_c, status.humidity_pct);
+  if (status.schedule && status.schedule.length) {
+    renderSchedule(status.schedule);
+    renderAcknowledged(status.acknowledged);
+  }
+  for (const turn of status.history) {
+    renderStoredTurn(turn);
+  }
+  scrollToBottom();
+});
+
+el.resumeNewBtn.addEventListener("click", () => {
+  localStorage.removeItem(STORAGE_KEY);
+  workerId = null;
+  pendingResumeStatus = null;
+  el.onboardingForm.reset();
+  showOnboarding();
+});
+
 function showApp(profile) {
   el.onboardingScreen.hidden = true;
+  el.resumeScreen.hidden = true;
   el.appScreen.hidden = false;
   el.profileWorker.textContent = profile.worker_id;
   el.profileWorkType.textContent = titleCase(profile.work_type);
@@ -123,9 +171,13 @@ el.onboardingForm.addEventListener("submit", async (e) => {
 el.switchWorkerBtn.addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
   workerId = null;
+  pendingResumeStatus = null;
+  currentSchedule = null;
   el.messageList.innerHTML = "";
   el.onboardingForm.reset();
   setRiskLevel(null, { animate: false });
+  el.conditionsCard.hidden = true;
+  el.scheduleCard.hidden = true;
   showOnboarding();
 });
 
@@ -157,6 +209,14 @@ async function sendMessage(message, { fromUser }) {
     }
 
     setRiskLevel(res.risk_level, { animate: true });
+    renderConditions(res.temperature_c, res.feels_like_c, res.humidity_pct);
+    // ChatResponse always carries the latest known schedule, fresh or
+    // carried forward from an earlier turn - only re-render (and reset the
+    // "got it") when it's actually different from what's already shown.
+    if (res.schedule && res.schedule.length && JSON.stringify(res.schedule) !== JSON.stringify(currentSchedule)) {
+      renderSchedule(res.schedule);
+      renderAcknowledged(false);
+    }
   } catch (err) {
     typingEl.remove();
     appendErrorBubble(err.message || "Couldn't reach Solaris. Check your connection and try again.");
@@ -251,6 +311,112 @@ function setRiskLevel(level, { animate }) {
     void el.riskBadge.offsetWidth;
     el.riskBadge.classList.add("risk-updated");
   }
+}
+
+const HUMIDITY_GAUGE_CIRCUMFERENCE = 263.89; // 2 * PI * r(42), matches style.css
+
+function renderConditions(temperatureC, feelsLikeC, humidityPct) {
+  if (temperatureC == null) return;
+
+  el.tempValue.textContent = Math.round(temperatureC);
+  el.feelsValue.textContent = Math.round(feelsLikeC);
+  el.humidityValue.textContent = Math.round(humidityPct);
+
+  const fraction = Math.max(0, Math.min(1, humidityPct / 100));
+  el.humidityGaugeFill.style.strokeDashoffset = String(HUMIDITY_GAUGE_CIRCUMFERENCE * (1 - fraction));
+
+  el.conditionsCard.hidden = false;
+}
+
+function renderSchedule(schedule) {
+  currentSchedule = schedule;
+  el.scheduleList.innerHTML = "";
+
+  for (const step of schedule) {
+    const li = document.createElement("li");
+    li.className = "schedule-step";
+    li.dataset.time = step.time;
+    li.innerHTML = `
+      <span class="step-time">${escapeHtml(step.time)}</span>
+      <span class="step-action">${escapeHtml(step.action)}</span>
+      <span class="step-detail">${escapeHtml(step.detail)}</span>`;
+    el.scheduleList.appendChild(li);
+  }
+
+  el.scheduleCard.hidden = false;
+  updateSchedulePassedState();
+}
+
+function updateSchedulePassedState() {
+  if (!currentSchedule || !currentSchedule.length) return;
+
+  const nowMinutes = nowMinutesIST();
+  let passedCount = 0;
+  let nextStep = null;
+
+  for (const li of el.scheduleList.children) {
+    const stepMinutes = minutesSinceMidnight(li.dataset.time);
+    const passed = stepMinutes <= nowMinutes;
+    li.classList.toggle("step-passed", passed);
+    if (passed) passedCount += 1;
+    else if (!nextStep) nextStep = li.dataset.time;
+  }
+
+  const total = currentSchedule.length;
+  const fillFraction = total ? passedCount / total : 0;
+  const bottleInnerHeight = 82; // 90 viewBox height minus ~8px base margin
+  const fillHeight = bottleInnerHeight * fillFraction;
+  el.hydrationFill.setAttribute("y", String(90 - fillHeight));
+  el.hydrationFill.setAttribute("height", String(fillHeight));
+
+  el.hydrationNext.textContent = nextStep ? `Next: ${nextStep}` : "Shift plan complete";
+}
+
+function minutesSinceMidnight(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// The backend grounds schedule times in Asia/Kolkata (app.config.local_now),
+// regardless of where the browser's system clock thinks it is - comparing
+// against the browser's local time would misjudge which steps have passed
+// for anyone not physically in IST (which, on a dev machine, is likely).
+function nowMinutesIST() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === "hour").value);
+  const minute = Number(parts.find((p) => p.type === "minute").value);
+  return hour * 60 + minute;
+}
+
+function renderAcknowledged(acknowledged) {
+  el.ackBtn.classList.toggle("is-acknowledged", acknowledged);
+  el.ackBtn.disabled = acknowledged;
+  el.ackBtn.querySelector(".ack-btn-label").textContent = acknowledged ? "Got it — noted" : "Got it";
+}
+
+el.ackBtn.addEventListener("click", async () => {
+  if (!workerId) return;
+  try {
+    await api(`/worker/${encodeURIComponent(workerId)}/acknowledge`, { method: "POST" });
+    renderAcknowledged(true);
+  } catch (err) {
+    console.error("Failed to record acknowledgment", err);
+  }
+});
+
+// Time keeps moving even without a new message - keep the bottle/step
+// states current while the tab is open.
+setInterval(updateSchedulePassedState, 60000);
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function setButtonLoading(btn, isLoading) {
