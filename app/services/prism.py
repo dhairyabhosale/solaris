@@ -25,6 +25,7 @@ from typing import Optional
 
 import httpx
 import openai
+from fastapi import BackgroundTasks
 from openai import AsyncOpenAI
 
 from app.config import local_now, settings
@@ -93,14 +94,22 @@ def seconds_until_reset(exc: openai.APIStatusError) -> Optional[float]:
     return None
 
 
+_groq_client: Optional[AsyncOpenAI] = None
+
+
 def _client() -> AsyncOpenAI:
+    # Reused across calls within a warm instance instead of paying a fresh
+    # TLS handshake to Groq on every single chat message.
     # max_retries=0: the SDK's own backoff could outlast Vercel's function timeout.
-    return AsyncOpenAI(
-        base_url=GROQ_BASE_URL,
-        api_key=settings.groq_api_key,
-        timeout=REQUEST_TIMEOUT_S,
-        max_retries=0,
-    )
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = AsyncOpenAI(
+            base_url=GROQ_BASE_URL,
+            api_key=settings.groq_api_key,
+            timeout=REQUEST_TIMEOUT_S,
+            max_retries=0,
+        )
+    return _groq_client
 
 
 async def _emit_trace(
@@ -154,17 +163,23 @@ async def _emit_trace(
         logger.warning("PRISM trace delivery failed (worker's reply already went out): %r", exc)
 
 
-async def chat_completion(session_id: str, worker_id: str, request: dict) -> str:
+async def chat_completion(
+    session_id: str,
+    worker_id: str,
+    request: dict,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> str:
     if not settings.groq_api_key:
         # The SDK refuses to build a client without a key, which would surface as a bare 500.
         logger.error("GROQ_API_KEY is not set")
         raise LLMUnavailable("Solaris's AI service isn't available right now. Please try again later.")
 
     kwargs = {**request, "model": settings.groq_model}
+    client = _client()
     started = time.monotonic()
 
     try:
-        async with asyncio.timeout(TOTAL_DEADLINE_S), _client() as client:
+        async with asyncio.timeout(TOTAL_DEADLINE_S):
             try:
                 completion = await client.chat.completions.create(**kwargs)
             except openai.RateLimitError as exc:
@@ -214,7 +229,7 @@ async def chat_completion(session_id: str, worker_id: str, request: dict) -> str
         )
         raise LLMUnavailable("Solaris couldn't put together a reply. Please rephrase and try again.")
 
-    await _emit_trace(
+    trace_kwargs = dict(
         session_id=session_id,
         worker_id=worker_id,
         model=completion.model,
@@ -222,5 +237,13 @@ async def chat_completion(session_id: str, worker_id: str, request: dict) -> str
         output_message=content,
         latency_ms=latency_ms,
     )
+    if background_tasks is not None:
+        # Send the reply now; record/deliver the trace after the response has
+        # gone out. Starlette runs background tasks after the response is
+        # sent but before the request is considered finished, so this is
+        # still safe on Vercel - the invocation isn't frozen until it's done.
+        background_tasks.add_task(_emit_trace, **trace_kwargs)
+    else:
+        await _emit_trace(**trace_kwargs)
 
     return content

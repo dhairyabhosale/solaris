@@ -1,5 +1,7 @@
+import asyncio
+
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.models import ChatRequest, ChatResponse, ChatTurn, HydrationLogRequest, TraceEntry, TraceLog, WorkerStatus
 from app.services import llm, store, weather
@@ -31,7 +33,7 @@ def _hydration_target_ml(risk_level: str, profile) -> int:
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest) -> ChatResponse:
+async def chat(payload: ChatRequest, background_tasks: BackgroundTasks) -> ChatResponse:
     profile = await store.get_worker(payload.worker_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Worker not onboarded yet. Call /onboarding first.")
@@ -57,6 +59,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
             system_prompt=system_prompt,
             history=history,
             user_message=payload.message,
+            background_tasks=background_tasks,
         )
     except LLMUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.message) from exc
@@ -130,22 +133,33 @@ async def worker_status(worker_id: str) -> WorkerStatus:
         return WorkerStatus(onboarded=False)
 
     session_id = store.session_id_for(worker_id)
-    history = [ChatTurn(**turn) for turn in await store.get_history(session_id)]
-    cached_weather = await store.get_weather(session_id) or {}
-    risk_level = await store.get_risk_level(session_id)
+
+    # Independent reads - run concurrently instead of paying for 6 sequential
+    # round-trips to Redis. This is what the frontend calls on every page
+    # load/resume, so its latency is directly felt as "the site is slow."
+    raw_history, cached_weather, risk_level, schedule, acknowledged, hydration_ml = await asyncio.gather(
+        store.get_history(session_id),
+        store.get_weather(session_id),
+        store.get_risk_level(session_id),
+        store.get_schedule(session_id),
+        store.get_acknowledged(session_id),
+        store.get_hydration_ml(session_id),
+    )
+    cached_weather = cached_weather or {}
+    history = [ChatTurn(**turn) for turn in raw_history]
 
     return WorkerStatus(
         onboarded=True,
         profile=profile,
         session_id=session_id,
         risk_level=risk_level,
-        schedule=await store.get_schedule(session_id),
-        acknowledged=await store.get_acknowledged(session_id),
+        schedule=schedule,
+        acknowledged=acknowledged,
         temperature_c=cached_weather.get("temperature_c"),
         feels_like_c=cached_weather.get("feels_like_c"),
         humidity_pct=cached_weather.get("humidity_pct"),
         peak_heat_hour=cached_weather.get("peak_heat_hour"),
-        hydration_logged_ml=await store.get_hydration_ml(session_id),
+        hydration_logged_ml=hydration_ml,
         hydration_target_ml=_hydration_target_ml(risk_level or "unknown", profile),
         history=history,
     )

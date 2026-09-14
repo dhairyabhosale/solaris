@@ -16,6 +16,11 @@ def _settings(monkeypatch):
     # Disabled by default regardless of the real value in .env, so tests never
     # depend on network access or a real PRISM key.
     monkeypatch.setattr(prism.settings, "prismtrace_api_key", "")
+    # _client() caches a module-level Groq client for reuse across real
+    # requests; without resetting it, a client built against one test's
+    # monkeypatched AsyncOpenAI would leak into the next test instead of
+    # picking up its own mock.
+    monkeypatch.setattr(prism, "_groq_client", None)
 
 
 def _use_trace_transport(monkeypatch, responses):
@@ -347,3 +352,57 @@ def test_emit_trace_records_locally_before_attempting_prism_delivery(monkeypatch
     assert len(traces) == 1
     assert traces[0]["delivered_to_prism"] is True  # reflects that PRISM *was* configured, not delivery success
     assert len(trace_sent) == 1
+
+
+def test_chat_completion_defers_trace_to_background_task_when_provided(monkeypatch):
+    from fastapi import BackgroundTasks
+
+    _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("the reply"))])
+    trace_sent = _use_trace_transport(monkeypatch, [httpx.Response(200, json={"ok": True})])
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "pt-sk-test")
+
+    background_tasks = BackgroundTasks()
+    request = {"messages": [{"role": "user", "content": "hi"}], "response_format": {"type": "json_object"}}
+    result = asyncio.run(
+        prism.chat_completion(
+            session_id="w1:2026-09-14", worker_id="w1", request=request, background_tasks=background_tasks
+        )
+    )
+
+    assert result == "the reply"
+    # Nothing sent yet - the trace POST is scheduled, not awaited, so the
+    # caller (the /chat route) can return to the worker immediately.
+    assert trace_sent == []
+    assert len(background_tasks.tasks) == 1
+
+    asyncio.run(background_tasks())
+    assert len(trace_sent) == 1
+
+
+def test_chat_completion_still_awaits_trace_without_background_tasks(monkeypatch):
+    _use_transport(monkeypatch, [httpx2.Response(200, json=_completion("the reply"))])
+    trace_sent = _use_trace_transport(monkeypatch, [httpx.Response(200, json={"ok": True})])
+    monkeypatch.setattr(prism.settings, "prismtrace_api_key", "pt-sk-test")
+
+    assert _call() == "the reply"
+    # No background_tasks passed (e.g. scripts/run_scenarios.py calling
+    # llm.ask directly) - falls back to the old synchronous behaviour.
+    assert len(trace_sent) == 1
+
+
+def test_groq_client_is_reused_across_calls(monkeypatch):
+    monkeypatch.setattr(prism.settings, "groq_model", "openai/gpt-oss-120b")
+    _use_transport(
+        monkeypatch,
+        [
+            httpx2.Response(200, json=_completion("first")),
+            httpx2.Response(200, json=_completion("second")),
+        ],
+    )
+
+    assert _call() == "first"
+    client_after_first = prism._groq_client
+    assert client_after_first is not None
+
+    assert _call() == "second"
+    assert prism._groq_client is client_after_first

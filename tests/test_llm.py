@@ -89,7 +89,7 @@ def test_non_list_schedule_becomes_none():
 def test_ask_sends_system_prompt_history_and_schema_in_openai_format(monkeypatch):
     captured = {}
 
-    async def fake_chat_completion(session_id, worker_id, request):
+    async def fake_chat_completion(session_id, worker_id, request, background_tasks=None):
         captured.update(session_id=session_id, worker_id=worker_id, request=request)
         return '{"risk_level": "moderate", "escalate": false, "message": "ok", "schedule": null}'
 

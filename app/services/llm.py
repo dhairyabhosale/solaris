@@ -16,6 +16,8 @@ import json
 import re
 from typing import Any, Optional
 
+from fastapi import BackgroundTasks
+
 from app.config import local_now
 from app.models import WorkerProfile
 from app.services import prism
@@ -178,6 +180,7 @@ async def ask(
     system_prompt: str,
     history: list[dict],
     user_message: str,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> dict:
     messages = [{"role": "system", "content": system_prompt}]
     for turn in history:
@@ -189,5 +192,6 @@ async def ask(
         session_id=session_id,
         worker_id=worker_id,
         request={"messages": messages, "response_format": RESPONSE_FORMAT},
+        background_tasks=background_tasks,
     )
     return _parse_structured_reply(raw_text)
