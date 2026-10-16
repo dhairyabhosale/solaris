@@ -16,10 +16,10 @@ dist/
 uv.lock
 
 # --- Environment / deployment ---
+# The project requires no environment variables; there is no .env.example.
+# `.env.local` is written by `vercel link`.
 .env
 .env.*
-!.env.example
-.vercel
 
 # --- Data ---
 # Raw sources (~719 MB) and interim parquet are large and fully reproducible
@@ -39,5 +39,3 @@ data/processed/*
 models/*
 !models/.gitkeep
 !models/*.meta.json
-
-.vercel
