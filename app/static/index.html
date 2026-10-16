@@ -9,7 +9,7 @@
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 </head>
@@ -48,10 +48,6 @@
       <span></span><span></span><span></span>
     </button>
   </div>
-  <div class="data-banner" id="dataBanner" role="status">
-    <span class="dot" aria-hidden="true"></span>
-    <span id="dataBannerText">Loading dataset coverage</span>
-  </div>
   <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
 </header>
 
@@ -60,18 +56,32 @@
   <!-- ===================== OVERVIEW ===================== -->
   <section class="view is-active" id="view-overview">
 
-    <div class="hero">
-      <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Day-ahead demand forecasting for India</p>
-      <h1 class="hero-title reveal">
-        Predicting <span class="grad-text">tomorrow's electricity demand</span>
-        from today's weather forecast.
-      </h1>
-      <p class="lede reveal">
-        India's grid operators must decide today how much power to generate for every hour
-        of tomorrow. Get it wrong and you either waste money or risk blackouts. Solaris
-        tests whether the weather forecast makes that decision measurably better.
-      </p>
-      <div class="hero-meta reveal" id="heroMeta"></div>
+    <div class="hero-wrap">
+      <div class="hero">
+        <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Day-ahead demand forecasting for India</p>
+        <h1 class="hero-title reveal">
+          Predicting <span class="grad-text">tomorrow's electricity demand</span>
+          from today's weather forecast.
+        </h1>
+        <p class="lede reveal">
+          India's grid operators must decide today how much power to generate for every hour
+          of tomorrow. Get it wrong and you either waste money or risk blackouts. Solaris
+          tests whether the weather forecast makes that decision measurably better.
+        </p>
+        <div class="hero-meta reveal" id="heroMeta"></div>
+      </div>
+
+      <figure class="hero-viz reveal" aria-labelledby="vizCaption">
+        <canvas id="heroCanvas" role="img"
+                aria-label="Animated illustration of a load curve being extended into a forecast with a widening uncertainty band"></canvas>
+        <div class="viz-chrome" aria-hidden="true">
+          <span class="viz-tag viz-tag-actual">observed</span>
+          <span class="viz-tag viz-tag-forecast">forecast</span>
+        </div>
+        <figcaption id="vizCaption" class="viz-caption">
+          Illustrative animation of the forecasting idea. The measured results are below.
+        </figcaption>
+      </figure>
     </div>
 
     <div class="kpi-grid" id="kpiGrid">

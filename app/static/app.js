@@ -329,15 +329,14 @@ document.querySelector('.brand').addEventListener('click', (event) => {
 let OVERVIEW = null;
 
 async function loadCoverageBanner() {
+  // The coverage disclosure lives in the footer only. The header used to carry
+  // a duplicate of the same sentence.
   try {
     OVERVIEW = OVERVIEW || await api('/api/overview');
-    const note = OVERVIEW.data_coverage.refresh_note;
-    $('dataBannerText').textContent = note;
-    $('footerCoverage').textContent = note;
+    $('footerCoverage').textContent = OVERVIEW.data_coverage.refresh_note;
   } catch (error) {
-    const message = 'Pipeline output not found. Run: python -m solaris.cli all';
-    $('dataBannerText').textContent = message;
-    $('footerCoverage').textContent = message;
+    $('footerCoverage').textContent =
+      'Pipeline output not found. Run: python -m solaris.cli all';
   }
 }
 
@@ -930,6 +929,212 @@ async function loadMethods() {
 }
 
 // --------------------------------------------------------------------------
+// Hero visualisation
+// --------------------------------------------------------------------------
+
+/* A looping illustration of the idea behind the project: a load curve is
+ * observed up to "now", then continues as a forecast whose uncertainty band
+ * widens with the horizon.
+ *
+ * The shape is generated, not measured. It carries no axis values, no units
+ * and a caption saying so, because this project does not put invented numbers
+ * in front of a reader. It is decoration that explains the concept. Every real
+ * figure on the site comes from the evaluation run.
+ */
+function startHeroViz() {
+  const canvas = $('heroCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  let width = 0;
+  let height = 0;
+  let running = false;
+  let frame = null;
+  let onScreen = true;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  /* A plausible daily load shape in normalised units: overnight trough,
+   * midday shoulder, and the evening peak this project is about. */
+  function load(t) {
+    return (
+      0.5
+      + 0.20 * Math.sin(t - 1.7)
+      + 0.13 * Math.sin(2 * t + 0.6)
+      + 0.05 * Math.sin(3.4 * t + 1.1)
+      + 0.025 * Math.sin(7.3 * t)
+    );
+  }
+
+  const PAD_L = 18;
+  const PAD_R = 18;
+  const PAD_T = 46;
+  const PAD_B = 26;
+
+  function draw(timestamp) {
+    const phase = timestamp / 5200;
+    const plotW = width - PAD_L - PAD_R;
+    const plotH = height - PAD_T - PAD_B;
+    const toY = (v) => PAD_T + plotH - v * plotH * 0.84 - plotH * 0.08;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Grid, drifting left so the panel reads as a monitor.
+    ctx.strokeStyle = 'rgba(140,170,225,0.085)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i += 1) {
+      const y = PAD_T + (plotH / 4) * i;
+      ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(width - PAD_R, y); ctx.stroke();
+    }
+    const spacing = 58;
+    const drift = (phase * 90) % spacing;
+    for (let x = PAD_L - drift; x < width - PAD_R; x += spacing) {
+      if (x < PAD_L) continue;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, PAD_T + plotH); ctx.stroke();
+    }
+
+    // "Now" sits two thirds across: observed behind it, forecast ahead.
+    const nowX = PAD_L + plotW * 0.62;
+    const span = 7.2;
+    const steps = 150;
+    const tAt = (x) => ((x - PAD_L) / plotW) * span + phase * 2.0;
+    const aheadW = Math.max(width - PAD_R - nowX, 1);
+
+    // Uncertainty band, widening with the forecast horizon.
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const x = nowX + (aheadW * i) / steps;
+      const h = (x - nowX) / aheadW;
+      ctx.lineTo(x, toY(load(tAt(x)) + 0.035 + 0.1 * h * h));
+    }
+    for (let i = steps; i >= 0; i -= 1) {
+      const x = nowX + (aheadW * i) / steps;
+      const h = (x - nowX) / aheadW;
+      ctx.lineTo(x, toY(load(tAt(x)) - 0.035 - 0.1 * h * h));
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,176,32,0.13)';
+    ctx.fill();
+
+    // Observed segment.
+    const stroke = ctx.createLinearGradient(PAD_L, 0, width - PAD_R, 0);
+    stroke.addColorStop(0, 'rgba(34,211,238,0.35)');
+    stroke.addColorStop(0.55, 'rgba(233,238,251,0.95)');
+    stroke.addColorStop(1, 'rgba(233,238,251,0.95)');
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2.4;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const x = PAD_L + ((nowX - PAD_L) * i) / steps;
+      ctx.lineTo(x, toY(load(tAt(x))));
+    }
+    ctx.stroke();
+
+    // Forecast segment, dashed to separate it from what was measured.
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = 'rgba(255,176,32,0.95)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const x = nowX + (aheadW * i) / steps;
+      ctx.lineTo(x, toY(load(tAt(x))));
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // The forecast-issue moment.
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(140,170,225,0.40)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(nowX, PAD_T - 6);
+    ctx.lineTo(nowX, PAD_T + plotH);
+    ctx.stroke();
+    ctx.restore();
+
+    const headY = toY(load(tAt(nowX)));
+    const halo = 9.5 + Math.sin(timestamp / 300) * 1.4;
+    ctx.beginPath();
+    ctx.arc(nowX, headY, halo, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,176,32,0.16)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(nowX, headY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffb020';
+    ctx.fill();
+
+    // Sampled observations along the measured part.
+    for (let i = 0; i < 7; i += 1) {
+      const x = PAD_L + ((nowX - PAD_L) / 7) * (i + 0.5);
+      const y = toY(load(tAt(x)));
+      const twinkle = 0.3 + 0.3 * Math.sin(timestamp / 520 + i * 1.3);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(34,211,238,' + (twinkle + 0.35).toFixed(3) + ')';
+      ctx.fill();
+    }
+
+    if (running) frame = requestAnimationFrame(draw);
+  }
+
+  // Only animate while the panel is on screen, the tab is visible, and the
+  // overview is the active view. An off-screen canvas loop is wasted battery.
+  function shouldRun() {
+    return onScreen
+      && !document.hidden
+      && !REDUCED_MOTION
+      && $('view-overview').classList.contains('is-active');
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    frame = requestAnimationFrame(draw);
+  }
+  function stop() {
+    running = false;
+    if (frame) cancelAnimationFrame(frame);
+    frame = null;
+  }
+
+  resize();
+  window.addEventListener('resize', () => {
+    resize();
+    if (!running) draw(performance.now());
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else if (shouldRun()) start();
+  });
+  document.querySelectorAll('.nav-link').forEach((link) => {
+    link.addEventListener('click', () => {
+      setTimeout(() => { if (shouldRun()) start(); else stop(); }, 60);
+    });
+  });
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((entries) => {
+      onScreen = entries[0].isIntersecting;
+      if (shouldRun()) start(); else stop();
+    }, { threshold: 0.05 }).observe(canvas);
+  }
+
+  if (REDUCED_MOTION) draw(0);   // a single static frame, no loop
+  else start();
+}
+
+// --------------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------------
 
@@ -963,4 +1168,5 @@ window.addEventListener('resize', () => {
 
 loadCoverageBanner();
 showView(viewFromHash());
+startHeroViz();
 onScroll();
