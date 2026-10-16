@@ -159,7 +159,7 @@ FEATURE ENGINEERING - turning raw data into things a model can learn from
 
 
 ===============================================================================
-4. WHAT DOES THE MODEL PREDICT - AND WHAT DOES IT *NOT* MEAN?
+4. WHAT DOES THE MODEL PREDICT - AND WHAT DOES IT NOT MEAN?
 ===============================================================================
 
 WHAT IT PREDICTS
@@ -171,7 +171,7 @@ WHAT IT PREDICTS
   and predict every hour of tomorrow using only information that genuinely
   existed at 9am today.
 
-WHAT IT DOES *NOT* MEAN
+WHAT IT DOES NOT MEAN
 
   - It does NOT mean temperature CAUSES a specific amount of demand. It
     means temperature forecasts carry useful INFORMATION about demand. Hot
@@ -424,7 +424,7 @@ MY TOP FEATURES
   CHANGE in temperature from yesterday - which fits perfectly, because my
   model is predicting the change in demand from yesterday.
 
-WHAT IT DOES *NOT* PROVE
+WHAT IT DOES NOT PROVE
 
   - It does not prove causation. It shows statistical usefulness to this
     particular model, nothing more.

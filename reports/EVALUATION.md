@@ -6,7 +6,7 @@
 
 Day-ahead: every hour of day D is predicted from information available at 09:00 IST on day D-1. Weather inputs are archived day-ahead forecasts, never observations.
 
-- Target: `demand_mw` (all-India metered demand), unit **MW**
+- Target: `demand_mw` (all-India metered demand), unit MW
 - Timezone: Asia/Kolkata
 - Weather aggregation: pop-weighted national index over 18 load-centre cities
 
@@ -37,9 +37,9 @@ No random splitting is used anywhere. The test block was never seen during fitti
 
 `lgbm_weather` and `lgbm_calendar_history` are the same algorithm with the same hyperparameters. The only difference is that one may see the archived day-ahead temperature forecast. The gap between them is therefore the contribution of weather information.
 
-- MAE without weather: **3,822 MW**
-- MAE with weather: **3,398 MW**
-- Reduction: **11.07%**
+- MAE without weather: 3,822 MW
+- MAE with weather: 3,398 MW
+- Reduction: 11.07%
 - Paired t-test on daily MAE: t = 6.50, p = 3.22e-10, n = 305 days
 - Wilcoxon signed-rank p = 1.49e-10
 - Mean daily MAE improvement: 432 MW (95% CI 301 to 563 MW)
@@ -47,7 +47,7 @@ No random splitting is used anywhere. The test block was never seen during fitti
 
 ## Hot periods
 
-**Definition.** Research-defined: population-weighted national daily maximum day-ahead forecast temperature >= 37.67 C (the p90% of daily maxima over the training period). NOT an India Meteorological Department heatwave declaration.
+Definition: Research-defined: population-weighted national daily maximum day-ahead forecast temperature >= 37.67 C (the p90% of daily maxima over the training period). NOT an India Meteorological Department heatwave declaration.
 
 - Threshold: 37.67 C (p90 of training-period daily maxima)
 - Test hours labelled hot: 936 of 7,344 (12.75%)
@@ -64,7 +64,7 @@ P10-P90 interval: nominal 80%, empirical 57.5%, mean width 7,165 MW.
 
 ## Evening residual-load ramp
 
-**Definition.** Research residual load = metered all-India demand (NLDC_DEMAND|P) minus SCADA all-India solar (clipped at 0) and wind. Not an operator net-load definition; excludes behind-the-meter solar, interchange and storage.
+Definition: Research residual load = metered all-India demand (NLDC_DEMAND|P) minus SCADA all-India solar (clipped at 0) and wind. Not an operator net-load definition; excludes behind-the-meter solar, interchange and storage.
 
 - Days analysed: 845
 - Mean steepest hourly ramp: 12,410 MW/h

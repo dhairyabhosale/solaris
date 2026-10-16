@@ -487,7 +487,7 @@ def _write_markdown_summary(metrics: dict) -> Path:
         metrics["forecast_convention"],
         "",
         f"- Target: `{metrics['dataset']['target']}` (all-India metered demand), "
-        f"unit **{metrics['dataset']['unit']}**",
+        f"unit {metrics['dataset']['unit']}",
         f"- Timezone: {metrics['dataset']['timezone']}",
         f"- Weather aggregation: {metrics['dataset']['weighting_scheme']}-weighted "
         "national index over 18 load-centre cities",
@@ -532,9 +532,9 @@ def _write_markdown_summary(metrics: dict) -> Path:
         "day-ahead temperature forecast. The gap between them is therefore the "
         "contribution of weather information.",
         "",
-        f"- MAE without weather: **{_fmt(contribution['mae_mw_without_weather'])} MW**",
-        f"- MAE with weather: **{_fmt(contribution['mae_mw_with_weather'])} MW**",
-        f"- Reduction: **{_fmt(reduction, 2)}%**",
+        f"- MAE without weather: {_fmt(contribution['mae_mw_without_weather'])} MW",
+        f"- MAE with weather: {_fmt(contribution['mae_mw_with_weather'])} MW",
+        f"- Reduction: {_fmt(reduction, 2)}%",
     ]
     if significance.get("paired_t_pvalue") is not None:
         lines += [
@@ -552,7 +552,7 @@ def _write_markdown_summary(metrics: dict) -> Path:
             "",
             "## Hot periods",
             "",
-            f"**Definition.** {hot['definition']}",
+            f"Definition: {hot['definition']}",
             "",
             f"- Threshold: {_fmt(hot.get('threshold_c'), 2)} C "
             f"(p{int((hot.get('percentile') or 0) * 100)} of training-period daily maxima)",
@@ -586,7 +586,7 @@ def _write_markdown_summary(metrics: dict) -> Path:
     if ramp:
         lines += [
             "", "## Evening residual-load ramp", "",
-            f"**Definition.** {ramp['definition']}", "",
+            f"Definition: {ramp['definition']}", "",
             f"- Days analysed: {ramp['n_days']:,}",
             f"- Mean steepest hourly ramp: {_fmt(ramp['mean_max_hourly_ramp_mw'])} MW/h",
             f"- 95th percentile steepest hourly ramp: {_fmt(ramp['p95_max_hourly_ramp_mw'])} MW/h",

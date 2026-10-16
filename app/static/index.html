@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solaris Grid Intelligence</title>
-<meta name="description" content="Heat-aware day-ahead electricity demand forecasting and evening grid stress analysis for India.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<meta name="description" content="Forecasting India's electricity demand a day ahead using weather forecasts. Research dashboard with real, held-out results.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 </head>
@@ -16,45 +17,61 @@
 
 <a class="skip-link" href="#main">Skip to content</a>
 
-<header class="topbar">
+<div class="aurora" aria-hidden="true">
+  <span class="aurora-blob b1"></span>
+  <span class="aurora-blob b2"></span>
+  <span class="aurora-blob b3"></span>
+  <span class="grid-overlay"></span>
+</div>
+
+<header class="topbar" id="topbar">
   <div class="topbar-inner">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true">⚡</span>
+    <a class="brand" href="#overview" aria-label="Solaris Grid Intelligence, go to overview">
+      <img class="brand-logo" src="/logo.svg" alt="" width="40" height="40">
       <span class="brand-text">
         <strong>Solaris</strong>
         <span class="brand-sub">Grid Intelligence</span>
       </span>
-    </div>
+    </a>
+
     <nav class="nav" id="nav" aria-label="Sections">
       <button class="nav-link is-active" data-view="overview">Overview</button>
       <button class="nav-link" data-view="forecast">Forecast</button>
-      <button class="nav-link" data-view="heat">Heat &amp; demand</button>
-      <button class="nav-link" data-view="evening">Evening stress</button>
+      <button class="nav-link" data-view="heat">Heat</button>
+      <button class="nav-link" data-view="evening">Evening</button>
       <button class="nav-link" data-view="performance">Performance</button>
       <button class="nav-link" data-view="explain">Explainability</button>
-      <button class="nav-link" data-view="methods">Data &amp; methods</button>
+      <button class="nav-link" data-view="methods">Methods</button>
     </nav>
-    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="nav" aria-label="Toggle navigation">☰</button>
+
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="nav" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
   </div>
   <div class="data-banner" id="dataBanner" role="status">
     <span class="dot" aria-hidden="true"></span>
-    <span id="dataBannerText">Loading dataset coverage…</span>
+    <span id="dataBannerText">Loading dataset coverage</span>
   </div>
+  <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
 </header>
 
 <main id="main">
 
-  <!-- ============ OVERVIEW ============ -->
+  <!-- ===================== OVERVIEW ===================== -->
   <section class="view is-active" id="view-overview">
+
     <div class="hero">
-      <p class="eyebrow">Day-ahead demand forecasting · India</p>
-      <h1>Can weather-aware machine learning improve day-ahead electricity-demand forecasts in India?</h1>
-      <p class="lede" id="heroLede">
-        Solaris forecasts every hour of tomorrow's all-India electricity demand using only
-        information a forecaster would genuinely have had the day before — including the
-        archived weather forecast, never the observed weather.
+      <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Day-ahead demand forecasting for India</p>
+      <h1 class="hero-title reveal">
+        Predicting <span class="grad-text">tomorrow's electricity demand</span>
+        from today's weather forecast.
+      </h1>
+      <p class="lede reveal">
+        India's grid operators must decide today how much power to generate for every hour
+        of tomorrow. Get it wrong and you either waste money or risk blackouts. Solaris
+        tests whether the weather forecast makes that decision measurably better.
       </p>
-      <div class="hero-meta" id="heroMeta"></div>
+      <div class="hero-meta reveal" id="heroMeta"></div>
     </div>
 
     <div class="kpi-grid" id="kpiGrid">
@@ -64,32 +81,116 @@
       <div class="skeleton kpi-skeleton"></div>
     </div>
 
-    <div class="card">
-      <div class="card-head">
-        <h2>The headline result</h2>
-      </div>
-      <div class="finding-grid" id="findingGrid"></div>
-    </div>
+    <section class="explainer reveal" aria-labelledby="explainerHeading">
+      <h2 id="explainerHeading" class="section-title">
+        <span class="section-kicker">Start here</span>
+        What this is, in plain English
+      </h2>
 
-    <div class="card">
+      <div class="explainer-grid">
+        <article class="glass explain-card">
+          <div class="explain-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17l5-6 4 4 5-8 4 5"/><circle cx="8" cy="11" r="1.4"/>
+            </svg>
+          </div>
+          <h3>What it is</h3>
+          <p>
+            A machine learning system that predicts how much electricity the whole of
+            India will use, hour by hour, one day in advance. It was built and tested on
+            two and a half years of real grid measurements from Grid-India.
+          </p>
+        </article>
+
+        <article class="glass explain-card">
+          <div class="explain-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>
+            </svg>
+          </div>
+          <h3>What it does</h3>
+          <p>
+            It takes the weather forecast for tomorrow, plus how much power the country
+            used recently and what day of the week it is, and produces a demand figure for
+            each of the next 24 hours. It also shows when the evening crunch will hit.
+          </p>
+        </article>
+
+        <article class="glass explain-card">
+          <div class="explain-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/>
+            </svg>
+          </div>
+          <h3>Why it matters</h3>
+          <p>
+            Electricity cannot be stored cheaply at national scale, so supply has to match
+            demand every hour. A better forecast means fewer expensive standby plants
+            burning fuel for nothing, and less risk of falling short on a hot evening.
+          </p>
+        </article>
+      </div>
+
+      <div class="glass usecase-card">
+        <h3 class="usecase-title">How something like this gets used in real life</h3>
+        <ul class="usecase-list">
+          <li>
+            <span class="usecase-tag">Grid operators</span>
+            Decide which power stations to switch on for tomorrow. Being 400 MW closer to
+            the truth across a day removes roughly one mid-sized plant's worth of
+            guesswork.
+          </li>
+          <li>
+            <span class="usecase-tag">Power traders</span>
+            Day-ahead electricity markets price every hour separately. A sharper demand
+            view informs what to buy or sell, and at what price.
+          </li>
+          <li>
+            <span class="usecase-tag">Renewable planners</span>
+            Solar output collapses at sunset while demand climbs. Knowing how steep that
+            evening ramp will be shows how much battery or flexible generation is needed.
+          </li>
+          <li>
+            <span class="usecase-tag">Heat preparedness</span>
+            Hot spells drive air-conditioning load. Spotting the hardest days a day ahead
+            gives time to prepare instead of react.
+          </li>
+        </ul>
+        <p class="usecase-note">
+          To be clear about what this is: a research project evaluated on historical data,
+          not a live operational tool. The numbers on this site are real and measured, but
+          nobody should despatch a power station on them.
+        </p>
+      </div>
+    </section>
+
+    <section class="reveal" aria-labelledby="findingHeading">
+      <h2 id="findingHeading" class="section-title">
+        <span class="section-kicker">The result</span>
+        What the experiment found
+      </h2>
+      <div class="finding-grid" id="findingGrid"></div>
+    </section>
+
+    <section class="glass card reveal">
       <div class="card-head">
-        <h2>Forecast against actual</h2>
-        <p class="card-sub">Last 14 days of the held-out test period. The model never saw these hours during fitting.</p>
+        <h2>Forecast against what actually happened</h2>
+        <p class="card-sub">The final two weeks of the held-out test period. The model never saw these hours while it was being trained.</p>
       </div>
       <div class="plot" id="plotOverviewSeries"></div>
-    </div>
+    </section>
   </section>
 
-  <!-- ============ FORECAST ============ -->
+  <!-- ===================== FORECAST ===================== -->
   <section class="view" id="view-forecast">
     <div class="view-head">
       <h1>Demand forecast</h1>
-      <p class="lede">Hourly actual demand against the day-ahead forecast, over the held-out test
-      period. Pick any window — every point shown is an out-of-sample prediction.</p>
+      <p class="lede">Hourly actual demand against the day-ahead forecast. Pick any window.
+      Every point shown is a prediction for a day the model had never seen.</p>
     </div>
 
-    <div class="card">
-      <div class="controls" id="forecastControls">
+    <div class="glass card">
+      <div class="controls">
         <div class="control">
           <label for="startDate">From</label>
           <input type="date" id="startDate">
@@ -101,84 +202,87 @@
         <div class="control">
           <label for="modelSelect">Compare against</label>
           <select id="modelSelect">
-            <option value="lgbm_calendar_history">Calendar + history model</option>
+            <option value="lgbm_calendar_history">Model without weather</option>
             <option value="naive_lag_24h">Naive: same hour yesterday</option>
             <option value="none">Nothing</option>
           </select>
         </div>
         <div class="control control-check">
-          <label><input type="checkbox" id="showBand" checked> Show P10–P90 band</label>
+          <label class="switch">
+            <input type="checkbox" id="showBand" checked>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span>Uncertainty band</span>
+          </label>
         </div>
-        <button class="btn" id="applyRange">Update</button>
-        <button class="btn btn-ghost" id="jumpPeak">Jump to peak-demand day</button>
+        <button class="btn btn-primary" id="applyRange">Update</button>
+        <button class="btn" id="jumpPeak">Jump to record peak day</button>
       </div>
       <p class="inline-caveat" id="bandCaveat"></p>
       <p class="inline-caveat" id="coverageGapNote" hidden></p>
       <div class="plot plot-tall" id="plotForecast"></div>
+      <p class="plot-hint">Drag to zoom, double-click to reset.</p>
       <div class="window-stats" id="windowStats"></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
-        <h2>Daily peak demand: predicted vs actual</h2>
-        <p class="card-sub">Each point is one day of the test period.</p>
+        <h2>Daily peak demand: predicted against actual</h2>
+        <p class="card-sub">Each dot is one day. The closer to the diagonal, the better the call.</p>
       </div>
       <div class="plot" id="plotPeakScatter"></div>
     </div>
   </section>
 
-  <!-- ============ HEAT ============ -->
+  <!-- ===================== HEAT ===================== -->
   <section class="view" id="view-heat">
     <div class="view-head">
       <h1>Heat and demand</h1>
-      <p class="lede">How national demand moves with temperature, and whether weather information
-      helps the forecast more when it is hot.</p>
+      <p class="lede">How national demand moves with temperature, and whether weather
+      information helps the forecast more when it is hot.</p>
     </div>
 
     <div class="callout callout-warn">
       <strong>Association, not causation.</strong>
-      <span>These charts show that hot days and high demand occur together, and that temperature
-      forecasts improve the model. They do not establish that temperature <em>causes</em> a given
-      amount of demand. No causal identification strategy is used, and temperature is correlated
-      with season, working patterns and economic activity.</span>
+      <span>These charts show that hot days and high demand happen together, and that
+      temperature forecasts improve the model. They do not prove that temperature causes a
+      given amount of demand. Temperature also tracks the season, working patterns and
+      economic activity, and nothing here separates those out.</span>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
-        <h2>Daily peak demand vs daily maximum forecast temperature</h2>
-        <p class="card-sub">Population-weighted national index across 18 load centres. Colour shows month.</p>
+        <h2>Daily peak demand against daily maximum forecast temperature</h2>
+        <p class="card-sub">Population-weighted national index across 18 load centres. Colour shows the month.</p>
       </div>
       <div class="plot plot-tall" id="plotTempDemand"></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
         <h2>Does weather help more when it is hot?</h2>
         <p class="card-sub" id="hotDefinition"></p>
       </div>
       <div class="plot" id="plotHotSplit"></div>
       <div class="table-wrap">
-        <table class="data-table" id="hotSensitivityTable">
-          <caption>Sensitivity: the same comparison at four hot-period thresholds</caption>
-        </table>
+        <table class="data-table" id="hotSensitivityTable"></table>
       </div>
     </div>
   </section>
 
-  <!-- ============ EVENING ============ -->
+  <!-- ===================== EVENING ===================== -->
   <section class="view" id="view-evening">
     <div class="view-head">
       <h1>Evening grid stress</h1>
-      <p class="lede">As solar output falls away through the evening, the rest of the fleet has to
-      pick up load quickly. This is where day-ahead accuracy matters most operationally.</p>
+      <p class="lede">As solar output falls away after sunset, everything else has to pick
+      up the load fast. This is where a day-ahead forecast earns its keep.</p>
     </div>
 
     <div class="callout">
       <strong>How residual load is defined here.</strong>
-      <span id="residualDefinition">Loading…</span>
+      <span id="residualDefinition">Loading</span>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
         <h2>The average day</h2>
         <p class="card-sub">Mean demand, solar, wind and residual load by hour, across the full dataset.</p>
@@ -188,26 +292,26 @@
 
     <div class="stat-grid" id="rampStats"></div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
         <h2>When does the steepest ramp happen?</h2>
-        <p class="card-sub">Hour of the largest single-hour rise in residual load, counted over every full day.</p>
+        <p class="card-sub">The hour of the largest single-hour rise in residual load, counted over every complete day.</p>
       </div>
       <div class="plot" id="plotEveningRamp"></div>
     </div>
   </section>
 
-  <!-- ============ PERFORMANCE ============ -->
+  <!-- ===================== PERFORMANCE ===================== -->
   <section class="view" id="view-performance">
     <div class="view-head">
       <h1>Model performance</h1>
       <p class="lede" id="perfLede"></p>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
-        <h2>All models on the held-out test period</h2>
-        <p class="card-sub">Lower MAE is better. Every row was scored by the same code on the same hours.</p>
+        <h2>Every model on the held-out test period</h2>
+        <p class="card-sub">Lower error is better. Every row was scored by the same code on the same hours.</p>
       </div>
       <div class="table-wrap">
         <table class="data-table" id="modelTable"></table>
@@ -215,107 +319,99 @@
     </div>
 
     <div class="grid-2">
-      <div class="card">
+      <div class="glass card">
         <div class="card-head"><h2>Error by hour of day</h2></div>
         <div class="plot" id="plotErrorByHour"></div>
       </div>
-      <div class="card">
+      <div class="glass card">
         <div class="card-head"><h2>Residuals</h2></div>
         <div class="plot" id="plotResiduals"></div>
       </div>
     </div>
 
-    <div class="card" id="extrapolationCard">
+    <div class="glass card card-accent">
       <div class="card-head">
         <h2>A negative result worth keeping</h2>
       </div>
       <div id="extrapolationBody"></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
         <h2>Uncertainty band calibration</h2>
-        <p class="card-sub">Whether the P10–P90 band covers the actual value as often as it claims.</p>
+        <p class="card-sub">Whether the forecast range covers the real value as often as it claims to.</p>
       </div>
       <div class="plot" id="plotCalibration"></div>
       <div id="calibrationNote"></div>
     </div>
   </section>
 
-  <!-- ============ EXPLAIN ============ -->
+  <!-- ===================== EXPLAIN ===================== -->
   <section class="view" id="view-explain">
     <div class="view-head">
       <h1>What the model relies on</h1>
-      <p class="lede">Feature importance measures how much each input improved the model's training
-      objective — what it leans on, not what drives the grid.</p>
+      <p class="lede">Feature importance measures how much each input improved the model's
+      training objective. It shows what the model leans on, not what drives the grid.</p>
     </div>
 
     <div class="callout callout-warn">
       <strong>What this cannot tell you.</strong>
-      <span id="explainCaveat">Loading…</span>
+      <span id="explainCaveat">Loading</span>
     </div>
 
-    <div class="card">
-      <div class="card-head"><h2>Feature importance (share of total split gain)</h2></div>
+    <div class="glass card">
+      <div class="card-head"><h2>Feature importance, as a share of total split gain</h2></div>
       <div class="plot plot-tall" id="plotImportance"></div>
     </div>
   </section>
 
-  <!-- ============ METHODS ============ -->
+  <!-- ===================== METHODS ===================== -->
   <section class="view" id="view-methods">
     <div class="view-head">
       <h1>Data and methodology</h1>
       <p class="lede">Where every number on this site comes from, and what it does not support.</p>
     </div>
 
-    <div class="card">
-      <div class="card-head"><h2>Forecast task</h2></div>
+    <div class="glass card">
+      <div class="card-head"><h2>The forecasting task</h2></div>
       <p id="methodConvention" class="prose"></p>
       <div class="split-table" id="splitTable"></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head"><h2>Data sources</h2></div>
       <div id="sourceList"></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head">
         <h2>Sensitivity checks</h2>
         <p class="card-sub">Does the conclusion survive reasonable changes to the choices made?</p>
       </div>
-      <div class="table-wrap">
-        <table class="data-table" id="weightingTable">
-          <caption>Weather aggregation weighting</caption>
-        </table>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table" id="rollingTable">
-          <caption>Rolling-origin backtest: monthly refit, expanding window</caption>
-        </table>
-      </div>
+      <div class="table-wrap"><table class="data-table" id="weightingTable"></table></div>
+      <div class="table-wrap"><table class="data-table" id="rollingTable"></table></div>
     </div>
 
-    <div class="card">
+    <div class="glass card">
       <div class="card-head"><h2>Limitations</h2></div>
       <ul class="limitations" id="limitationList"></ul>
     </div>
 
-    <div class="card">
-      <div class="card-head"><h2>Reproduce it</h2></div>
+    <div class="glass card">
+      <div class="card-head"><h2>Reproduce it yourself</h2></div>
       <pre class="code"><code>git clone https://github.com/dhairyabhosale/solaris
 cd solaris
-pip install -r requirements.txt
+pip install -r requirements-research.txt
 
-python -m solaris.cli fetch-grid      # ~713 MB from Mendeley
+python -m solaris.cli fetch-grid      # about 713 MB from Mendeley
 python -m solaris.cli fetch-weather   # archived forecasts, Open-Meteo
 python -m solaris.cli prepare         # parse, join, quality-check
 python -m solaris.cli train --rolling # fit and evaluate every model
-python -m solaris.cli report          # regenerate figures and tables
+python -m solaris.cli report          # rebuild figures and tables
 
 uvicorn app.main:app --reload</code></pre>
-      <p class="prose">Every figure and table on this site is read from the files those commands
-      write. Nothing here is hand-entered.</p>
+      <p class="prose">Every figure and table on this site is read from the files those
+      commands write. Nothing here is typed in by hand.</p>
     </div>
   </section>
 
@@ -323,18 +419,21 @@ uvicorn app.main:app --reload</code></pre>
 
 <footer class="footer">
   <div class="footer-inner">
-    <div>
-      <strong>Solaris Grid Intelligence</strong>
-      <p id="footerCoverage"></p>
+    <div class="footer-brand">
+      <img src="/logo.svg" alt="" width="32" height="32">
+      <div>
+        <strong>Solaris Grid Intelligence</strong>
+        <p id="footerCoverage"></p>
+      </div>
     </div>
     <div class="footer-links">
       <a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener">Grid-India data (Mendeley, CC BY 4.0)</a>
       <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather by Open-Meteo (CC BY 4.0)</a>
-      <a href="https://github.com/dhairyabhosale/solaris" target="_blank" rel="noopener">Source code</a>
+      <a href="https://github.com/dhairyabhosale/solaris" target="_blank" rel="noopener">Source code on GitHub</a>
     </div>
   </div>
-  <p class="footer-fine">Historical research dataset, not a live grid feed. Forecast results are
-  retrospective evaluations on held-out data and are not operational advice.</p>
+  <p class="footer-fine">Historical research dataset, not a live grid feed. Forecast
+  results are retrospective evaluations on held-out data and are not operational advice.</p>
 </footer>
 
 <div class="toast" id="toast" role="alert" aria-live="assertive" hidden></div>
