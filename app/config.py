@@ -1,46 +1,31 @@
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+"""Application settings for the Solaris Grid Intelligence web app.
+
+The app is a read-only presentation layer over artefacts that
+``python -m solaris.cli all`` has already produced. It needs no API keys, no
+LLM provider and no database: if the files under ``reports/`` and
+``data/processed/`` exist, the app can serve them.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
-    groq_api_key: str = ""
-    # llama-3.3-70b-versatile is deprecated on Groq's free tier (shut down
-    # 2026-08-16) - gpt-oss-120b is Groq's own recommended replacement, and
-    # one of the few models that support strict structured outputs, which
-    # llm.py relies on for parseable risk_level/escalate. Check
-    # https://console.groq.com/docs/rate-limits before changing this.
-    groq_model: str = "openai/gpt-oss-120b"
+    # How long browsers may cache API responses. The underlying data only
+    # changes when the pipeline is re-run, so a long cache is correct.
+    api_cache_seconds: int = 300
 
-    # PRISM (Block Convey) live tracing - from prism.blockconvey.com/onboarding.
-    # Empty api_key means "not configured": chat_completion() skips trace
-    # delivery entirely, the app works the same either way. This is a
-    # side-channel trace POST after each model call, not a proxy the call
-    # itself routes through (that was an earlier, pre-onboarding guess).
-    prismtrace_api_key: str = ""
-    prismtrace_project_id: str = ""
-    prismtrace_host: str = "https://prism-api-prod.up.railway.app"
-
-    # Redis connection string - the Vercel "Redis by Redis" marketplace
-    # integration injects this automatically once connected to the
-    # project. Empty means "not configured": store.py then falls back
-    # to an in-memory dict (fine for local dev; not durable on serverless).
-    redis_url: str = ""
-
-    # The server runs in UTC on Vercel; "today" has to be the worker's day,
-    # or sessions would roll over at 05:30 IST in the middle of a shift.
-    app_timezone: str = "Asia/Kolkata"
+    # Hours of test-period data the time-series endpoint will return at once.
+    max_series_hours: int = 24 * 120
 
 
-settings = Settings()
-
-
-def local_now() -> datetime:
-    return datetime.now(ZoneInfo(settings.app_timezone))
-
-
-def local_today() -> date:
-    return local_now().date()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()

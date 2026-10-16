@@ -1,13 +1,43 @@
+# --- Python ---
 __pycache__/
 *.pyc
-.env
-.venv/
-venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.venv/
+venv/
 *.log
+
+# --- Build / deploy artefacts ---
+# `vercel deploy` runs a local build that creates these; none belong in git.
+build/
+dist/
+.vercel/
+uv.lock
+
+# --- Environment / deployment ---
+.env
+.env.*
+!.env.example
 .vercel
 
+# --- Data ---
+# Raw sources (~719 MB) and interim parquet are large and fully reproducible
+# from `python -m solaris.cli fetch-grid` / `fetch-weather` / `prepare`.
+data/raw/
+data/interim/
+
+# The full processed dataset is regenerable; the much smaller test-prediction
+# file the web app serves is tracked so the app runs straight after a clone.
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/test_predictions.parquet
+!data/processed/dataset_meta.json
+
+# Trained boosters are regenerable from `solaris.cli train`; their metadata
+# sidecars are tracked because the app reports the model version from them.
+models/*
+!models/.gitkeep
+!models/*.meta.json
+
 .vercel
-.env*

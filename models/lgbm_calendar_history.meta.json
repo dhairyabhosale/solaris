@@ -1,0 +1,53 @@
+{
+  "name": "lgbm_calendar_history",
+  "feature_group": "calendar_history",
+  "features": [
+    "hour",
+    "hour_sin",
+    "hour_cos",
+    "dayofweek",
+    "is_weekend",
+    "month",
+    "month_sin",
+    "month_cos",
+    "dayofyear",
+    "is_holiday",
+    "days_from_start",
+    "demand_lag_24h",
+    "demand_lag_48h",
+    "demand_lag_168h",
+    "demand_same_hour_mean_7d",
+    "demand_same_hour_std_7d",
+    "demand_daily_mean_lag_1d",
+    "demand_daily_max_lag_1d",
+    "demand_daily_mean_lag_7d",
+    "demand_trend_1d_7d"
+  ],
+  "target_mode": "delta",
+  "delta_anchor": "demand_lag_24h",
+  "quantile": null,
+  "params": {
+    "objective": "regression",
+    "metric": "l1",
+    "learning_rate": 0.05,
+    "num_leaves": 63,
+    "min_data_in_leaf": 40,
+    "feature_fraction": 0.85,
+    "bagging_fraction": 0.85,
+    "bagging_freq": 1,
+    "lambda_l2": 1.0,
+    "verbosity": -1,
+    "seed": 42,
+    "deterministic": true,
+    "force_row_wise": true
+  },
+  "best_iteration": 46,
+  "n_train_rows": 11503,
+  "train_range_ist": [
+    "2021-09-01 00:00:00+05:30",
+    "2022-12-31 23:00:00+05:30"
+  ],
+  "target": "demand_mw",
+  "target_unit": "MW",
+  "random_seed": 42
+}

@@ -1,781 +1,751 @@
-// Solaris — Heat Safety Companion. Vanilla JS, no build step, no framework.
-// Backed by /onboarding, /chat, /worker/{id}/status, /worker/{id}/acknowledge,
-// /worker/{id}/hydration, /worker/{id}/traces.
+/* Solaris Grid Intelligence - frontend.
+ *
+ * Every figure here is drawn from the API, which reads the research
+ * pipeline's own output files. There are no hard-coded metrics: if an
+ * artefact is missing, the view says what command produces it rather than
+ * showing a plausible-looking placeholder.
+ */
 
-const KNOWN_WORKERS_KEY = "solaris_known_workers"; // [{worker_id, work_type, location}]
-const ACTIVE_WORKER_KEY = "solaris_active_worker"; // worker_id string
+'use strict';
 
-const RISK_LABELS = {
-  low: "Low heat risk",
-  moderate: "Moderate heat risk",
-  high: "High heat risk",
-  extreme: "Extreme heat risk",
-  unknown: "Awaiting check-in",
+const isLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+
+const PALETTE = {
+  // The actual-demand line is the reference every chart is read against, so it
+  // has to be the highest-contrast colour in whichever theme is active.
+  actual:   isLight ? '#0d1522' : '#e8edf5',
+  weather:  '#f59e0b',
+  baseline: isLight ? '#0891b2' : '#22d3ee',
+  naive:    isLight ? '#7b8aa3' : '#6b7a92',
+  band:     'rgba(245, 158, 11, 0.16)',
+  solar:    '#d97706',
+  wind:     isLight ? '#059669' : '#34d399',
+  residual: isLight ? '#7c3aed' : '#a78bfa',
+  heat:     '#ef4444',
+  good:     isLight ? '#059669' : '#34d399',
 };
 
-const RISK_COLORS = {
-  low: "#0d9488",
-  moderate: "#d97706",
-  high: "#ea580c",
-  extreme: "#dc2626",
-  unknown: "#94a3b8",
+const PLOT_LAYOUT = {
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  plot_bgcolor: 'rgba(0,0,0,0)',
+  font: {
+    family: 'Inter, system-ui, sans-serif',
+    size: 12,
+    color: isLight ? '#51607a' : '#9aa8bd',
+  },
+  margin: { l: 62, r: 18, t: 14, b: 48 },
+  hovermode: 'x unified',
+  xaxis: { gridcolor: isLight ? '#e6ebf3' : '#1e2838', zeroline: false },
+  yaxis: { gridcolor: isLight ? '#e6ebf3' : '#1e2838', zeroline: false },
+  legend: { orientation: 'h', y: -0.18, x: 0 },
 };
 
-const GAUGE_CIRCUMFERENCE = 440;
-const GAUGE_MIN_C = 20;
-const GAUGE_MAX_C = 50;
+const PLOT_CONFIG = { displayModeBar: false, responsive: true };
 
-const el = {
-  onboardingScreen: document.getElementById("onboardingScreen"),
-  onboardingForm: document.getElementById("onboardingForm"),
-  onboardingSubmit: document.getElementById("onboardingSubmit"),
-  onboardingError: document.getElementById("onboardingError"),
-  appRoot: document.getElementById("appRoot"),
+// --------------------------------------------------------------------------
+// Utilities
+// --------------------------------------------------------------------------
 
-  liveClockTime: document.getElementById("liveClockTime"),
-  liveClockDate: document.getElementById("liveClockDate"),
+const $ = (id) => document.getElementById(id);
 
-  workerPillName: document.getElementById("workerPillName"),
-  workerPillRole: document.getElementById("workerPillRole"),
-  btnOpenSwitcher: document.getElementById("btnOpenSwitcher"),
-
-  heatRiskBadge: document.getElementById("heatRiskBadge"),
-  heatRiskBadgeText: document.getElementById("heatRiskBadgeText"),
-  heatIndexVal: document.getElementById("heatIndexVal"),
-  gaugeProgress: document.getElementById("gaugeProgress"),
-  locationVal: document.getElementById("locationVal"),
-  tempVal: document.getElementById("tempVal"),
-  humidityVal: document.getElementById("humidityVal"),
-  peakHourVal: document.getElementById("peakHourVal"),
-  escalationBanner: document.getElementById("escalationBanner"),
-  escalationText: document.getElementById("escalationText"),
-
-  nextStepVal: document.getElementById("nextStepVal"),
-  nextStepSubtext: document.getElementById("nextStepSubtext"),
-  waterTargetVal: document.getElementById("waterTargetVal"),
-  scheduleList: document.getElementById("scheduleList"),
-  ackBtn: document.getElementById("ackBtn"),
-  ackBtnLabel: document.getElementById("ackBtnLabel"),
-
-  hydrationFill: document.getElementById("hydrationFill"),
-  hydrationBarFill: document.getElementById("hydrationBarFill"),
-  hydrationCurrentText: document.getElementById("hydrationCurrentText"),
-  btnLogSip: document.getElementById("btnLogSip"),
-
-  chatHistory: document.getElementById("chatHistory"),
-  chatForm: document.getElementById("chatForm"),
-  chatInput: document.getElementById("chatInput"),
-  btnSendMessage: document.getElementById("btnSendMessage"),
-  quickChips: document.querySelectorAll(".chip-btn"),
-
-  prismDrawer: document.getElementById("prismDrawer"),
-  btnTogglePrism: document.getElementById("btnTogglePrism"),
-  btnClosePrism: document.getElementById("btnClosePrism"),
-  prismSessionIdDisplay: document.getElementById("prismSessionIdDisplay"),
-  prismTracesContainer: document.getElementById("prismTracesContainer"),
-
-  switcherModal: document.getElementById("switcherModal"),
-  btnCloseSwitcher: document.getElementById("btnCloseSwitcher"),
-  workerList: document.getElementById("workerList"),
-  btnShowAddWorker: document.getElementById("btnShowAddWorker"),
-  addWorkerForm: document.getElementById("addWorkerForm"),
-  addWorkerSubmit: document.getElementById("addWorkerSubmit"),
-  addWorkerError: document.getElementById("addWorkerError"),
-
-  sosModal: document.getElementById("sosModal"),
-  btnSos: document.getElementById("btnSos"),
-  btnCloseSos: document.getElementById("btnCloseSos"),
-};
-
-let activeWorkerId = null;
-let activeProfile = null;
-let currentSchedule = null;
-let hydrationTargetMl = null;
-
-init();
-
-async function init() {
-  setupEventListeners();
-  startLiveClock();
-
-  activeWorkerId = localStorage.getItem(ACTIVE_WORKER_KEY);
-  const known = loadKnownWorkers();
-
-  if (!activeWorkerId && known.length) {
-    activeWorkerId = known[known.length - 1].worker_id;
+async function api(path) {
+  const response = await fetch(path);
+  if (!response.ok) {
+    let detail = {};
+    try { detail = (await response.json()).detail || {}; } catch (_) { /* non-JSON */ }
+    const error = new Error(detail.message || `Request failed (${response.status})`);
+    error.command = detail.command;
+    error.status = response.status;
+    throw error;
   }
-
-  if (!activeWorkerId) {
-    showOnboarding();
-    return;
-  }
-
-  try {
-    const status = await api(`/worker/${encodeURIComponent(activeWorkerId)}/status`, { method: "GET" });
-    if (!status.onboarded) {
-      forgetWorker(activeWorkerId);
-      activeWorkerId = null;
-      showOnboarding();
-      return;
-    }
-    showApp();
-    hydrateFromStatus(status);
-  } catch (err) {
-    console.error("Failed to restore session", err);
-    showOnboarding();
-  }
+  return response.json();
 }
 
-function setupEventListeners() {
-  el.onboardingForm.addEventListener("submit", handleOnboardingSubmit);
-  el.addWorkerForm.addEventListener("submit", handleAddWorkerSubmit);
-  el.chatForm.addEventListener("submit", handleChatSubmit);
-  el.btnLogSip.addEventListener("click", () => logHydration(250));
-  el.ackBtn.addEventListener("click", handleAcknowledge);
-
-  el.quickChips.forEach((chip) => {
-    chip.addEventListener("click", () => {
-      el.chatInput.value = chip.getAttribute("data-msg");
-      el.chatForm.requestSubmit();
-    });
+function fmt(value, decimals = 0) {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a';
+  return Number(value).toLocaleString('en-IN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   });
-
-  el.btnTogglePrism.addEventListener("click", () => {
-    el.prismDrawer.classList.toggle("open");
-    if (el.prismDrawer.classList.contains("open")) loadPrismTraces();
-  });
-  el.btnClosePrism.addEventListener("click", () => el.prismDrawer.classList.remove("open"));
-
-  el.btnOpenSwitcher.addEventListener("click", openSwitcher);
-  el.btnCloseSwitcher.addEventListener("click", closeSwitcher);
-  el.btnShowAddWorker.addEventListener("click", () => {
-    el.addWorkerForm.hidden = false;
-    el.btnShowAddWorker.hidden = true;
-  });
-
-  el.btnSos.addEventListener("click", () => el.sosModal.classList.add("active"));
-  el.btnCloseSos.addEventListener("click", () => el.sosModal.classList.remove("active"));
 }
 
-// ---------------------------------------------------------------------
-// Live clock (local JS clock, IST - matches the backend's schedule timezone;
-// no external "current time" API needed or more reliable than one)
-// ---------------------------------------------------------------------
-
-function startLiveClock() {
-  tickClock();
-  setInterval(tickClock, 1000);
+function fmtGW(mw, decimals = 1) {
+  if (mw === null || mw === undefined || Number.isNaN(mw)) return 'n/a';
+  return `${(mw / 1000).toFixed(decimals)} GW`;
 }
 
-function tickClock() {
-  const now = new Date();
-  el.liveClockTime.textContent = now.toLocaleTimeString("en-GB", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  el.liveClockDate.textContent =
-    now.toLocaleDateString("en-GB", {
-      timeZone: "Asia/Kolkata",
-      day: "2-digit",
-      month: "short",
-    }) + " IST";
+function dateOnly(iso) {
+  return iso ? String(iso).slice(0, 10) : '';
 }
 
-// ---------------------------------------------------------------------
-// Known workers (client-side registry so "switch worker" can offer a
-// picker instead of forcing a brand-new signup every time)
-// ---------------------------------------------------------------------
-
-function loadKnownWorkers() {
-  try {
-    return JSON.parse(localStorage.getItem(KNOWN_WORKERS_KEY)) || [];
-  } catch (_) {
-    return [];
-  }
+function showError(container, error) {
+  container.innerHTML = `
+    <div class="empty-state">
+      <div>${escapeHtml(error.message)}</div>
+      ${error.command ? `<code>${escapeHtml(error.command)}</code>` : ''}
+    </div>`;
 }
 
-function saveKnownWorkers(list) {
-  localStorage.setItem(KNOWN_WORKERS_KEY, JSON.stringify(list));
-}
-
-function rememberWorker(profile) {
-  const known = loadKnownWorkers().filter((w) => w.worker_id !== profile.worker_id);
-  known.push({ worker_id: profile.worker_id, work_type: profile.work_type, location: profile.location });
-  saveKnownWorkers(known);
-}
-
-function forgetWorker(workerId) {
-  saveKnownWorkers(loadKnownWorkers().filter((w) => w.worker_id !== workerId));
-}
-
-function setActiveWorker(workerId) {
-  activeWorkerId = workerId;
-  localStorage.setItem(ACTIVE_WORKER_KEY, workerId);
-}
-
-// ---------------------------------------------------------------------
-// Screens
-// ---------------------------------------------------------------------
-
-function showOnboarding() {
-  el.appRoot.hidden = true;
-  el.onboardingScreen.hidden = false;
-}
-
-function showApp() {
-  el.onboardingScreen.hidden = true;
-  el.appRoot.hidden = false;
-}
-
-// ---------------------------------------------------------------------
-// Onboarding (first-ever visit)
-// ---------------------------------------------------------------------
-
-async function handleOnboardingSubmit(e) {
-  e.preventDefault();
-  hideError(el.onboardingError);
-
-  const payload = {
-    worker_id: document.getElementById("obWorkerId").value.trim(),
-    work_type: document.getElementById("obWorkType").value,
-    work_start: document.getElementById("obStart").value,
-    work_end: document.getElementById("obEnd").value,
-    location: document.getElementById("obLocation").value.trim(),
-  };
-
-  if (!payload.worker_id || !payload.work_type || !payload.location) {
-    showError(el.onboardingError, "Please fill in every field.");
-    return;
-  }
-
-  setButtonLoading(el.onboardingSubmit, true);
-  try {
-    await api("/onboarding", { method: "POST", body: payload });
-    rememberWorker(payload);
-    setActiveWorker(payload.worker_id);
-    activeProfile = payload;
-    showApp();
-    renderWorkerPill(payload);
-    await sendMessage("Checking in for today", { fromUser: false });
-  } catch (err) {
-    showError(el.onboardingError, err.message || "Something went wrong. Please try again.");
-  } finally {
-    setButtonLoading(el.onboardingSubmit, false);
-  }
-}
-
-async function handleAddWorkerSubmit(e) {
-  e.preventDefault();
-  hideError(el.addWorkerError);
-
-  const payload = {
-    worker_id: document.getElementById("awWorkerId").value.trim(),
-    work_type: document.getElementById("awWorkType").value,
-    work_start: document.getElementById("awStart").value,
-    work_end: document.getElementById("awEnd").value,
-    location: document.getElementById("awLocation").value.trim(),
-  };
-
-  if (!payload.worker_id || !payload.work_type || !payload.location) {
-    showError(el.addWorkerError, "Please fill in every field.");
-    return;
-  }
-
-  setButtonLoading(el.addWorkerSubmit, true);
-  try {
-    await api("/onboarding", { method: "POST", body: payload });
-    rememberWorker(payload);
-    setActiveWorker(payload.worker_id);
-    closeSwitcher();
-    showApp();
-    resetDashboard();
-    renderWorkerPill(payload);
-    activeProfile = payload;
-    await sendMessage("Checking in for today", { fromUser: false });
-  } catch (err) {
-    showError(el.addWorkerError, err.message || "Something went wrong. Please try again.");
-  } finally {
-    setButtonLoading(el.addWorkerSubmit, false);
-  }
-}
-
-// ---------------------------------------------------------------------
-// Worker switcher
-// ---------------------------------------------------------------------
-
-function openSwitcher() {
-  renderWorkerList();
-  el.addWorkerForm.hidden = true;
-  el.btnShowAddWorker.hidden = false;
-  el.addWorkerForm.reset();
-  hideError(el.addWorkerError);
-  el.switcherModal.classList.add("active");
-}
-
-function closeSwitcher() {
-  el.switcherModal.classList.remove("active");
-}
-
-function renderWorkerList() {
-  const known = loadKnownWorkers();
-  el.workerList.innerHTML = "";
-
-  if (!known.length) {
-    el.workerList.innerHTML = `<p class="worker-list-empty">No other workers yet.</p>`;
-    return;
-  }
-
-  for (const w of known) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "worker-row" + (w.worker_id === activeWorkerId ? " is-active" : "");
-    row.innerHTML = `
-      <div class="worker-avatar">👷</div>
-      <div class="worker-row-info">
-        <span class="worker-row-name">${escapeHtml(w.worker_id)}</span>
-        <span class="worker-row-meta">${escapeHtml(titleCase(w.work_type))} • ${escapeHtml(w.location)}</span>
-      </div>
-      ${w.worker_id === activeWorkerId ? '<span class="worker-row-active-tag">Active</span>' : ""}
-    `;
-    row.addEventListener("click", () => switchToWorker(w.worker_id));
-    el.workerList.appendChild(row);
-  }
-}
-
-async function switchToWorker(workerId) {
-  if (workerId === activeWorkerId) {
-    closeSwitcher();
-    return;
-  }
-  try {
-    const status = await api(`/worker/${encodeURIComponent(workerId)}/status`, { method: "GET" });
-    if (!status.onboarded) {
-      forgetWorker(workerId);
-      renderWorkerList();
-      return;
-    }
-    setActiveWorker(workerId);
-    closeSwitcher();
-    resetDashboard();
-    hydrateFromStatus(status);
-  } catch (err) {
-    console.error("Failed to switch worker", err);
-  }
-}
-
-// ---------------------------------------------------------------------
-// Dashboard hydrate / reset
-// ---------------------------------------------------------------------
-
-function resetDashboard() {
-  el.chatHistory.innerHTML = "";
-  el.scheduleList.innerHTML = "";
-  el.scheduleList.hidden = true;
-  el.ackBtn.hidden = true;
-  el.escalationBanner.hidden = true;
-  currentSchedule = null;
-  hydrationTargetMl = null;
-
-  // Clear every widget back to a neutral/loading state - otherwise, while a
-  // new worker's first check-in is still in flight, their dashboard would
-  // briefly show the *previous* worker's stale weather/risk/hydration data
-  // under the new worker's name.
-  renderRisk(null, false);
-  el.heatIndexVal.textContent = "--";
-  el.gaugeProgress.style.strokeDashoffset = String(GAUGE_CIRCUMFERENCE);
-  el.locationVal.textContent = "—";
-  el.tempVal.textContent = "—°C";
-  el.humidityVal.textContent = "—%";
-  el.peakHourVal.textContent = "—:00";
-  el.nextStepVal.textContent = "—";
-  el.nextStepSubtext.textContent = "No plan yet";
-  el.waterTargetVal.textContent = "— ml/hr";
-  el.hydrationCurrentText.textContent = "0 ml logged";
-  el.hydrationBarFill.style.width = "0%";
-  el.hydrationFill.setAttribute("y", "90");
-  el.hydrationFill.setAttribute("height", "0");
-}
-
-function hydrateFromStatus(status) {
-  activeProfile = status.profile;
-  renderWorkerPill(status.profile);
-  renderRisk(status.risk_level, false);
-  renderWeather(status.temperature_c, status.feels_like_c, status.humidity_pct, status.peak_hour ?? status.peak_heat_hour, status.profile);
-  hydrationTargetMl = status.hydration_target_ml;
-  renderHydration(status.hydration_logged_ml, status.hydration_target_ml, { animate: false });
-
-  if (status.schedule && status.schedule.length) {
-    renderSchedule(status.schedule);
-    renderAcknowledged(status.acknowledged);
-  }
-
-  for (const turn of status.history) {
-    if (turn.role === "user") appendUserMessage(turn.content, { animate: false });
-    else appendBotMessage(turn.content, { escalate: false, animate: false });
-  }
-  scrollChatToBottom();
-}
-
-function renderWorkerPill(profile) {
-  el.workerPillName.textContent = profile.worker_id;
-  el.workerPillRole.textContent = `${titleCase(profile.work_type)} • ${profile.location}`;
-}
-
-// ---------------------------------------------------------------------
-// Risk badge + gauge + weather stats
-// ---------------------------------------------------------------------
-
-function renderRisk(riskLevel, escalate) {
-  const level = riskLevel && RISK_LABELS[riskLevel] ? riskLevel : "unknown";
-  el.heatRiskBadge.className = "badge-risk " + level + (escalate ? " escalate" : "");
-  el.heatRiskBadgeText.textContent = RISK_LABELS[level];
-}
-
-function renderWeather(temperatureC, feelsLikeC, humidityPct, peakHour, profile) {
-  if (temperatureC == null) return;
-
-  el.heatIndexVal.textContent = Math.round(feelsLikeC);
-  el.tempVal.textContent = `${Math.round(temperatureC)}°C`;
-  el.humidityVal.textContent = `${Math.round(humidityPct)}%`;
-  el.locationVal.textContent = profile ? profile.location : "—";
-  el.peakHourVal.textContent = peakHour != null ? `${String(peakHour).padStart(2, "0")}:00` : "—:00";
-
-  const fraction = Math.min(Math.max((feelsLikeC - GAUGE_MIN_C) / (GAUGE_MAX_C - GAUGE_MIN_C), 0), 1);
-  el.gaugeProgress.style.strokeDashoffset = String(GAUGE_CIRCUMFERENCE * (1 - fraction));
-}
-
-function renderEscalation(escalate, message) {
-  if (escalate) {
-    el.escalationBanner.hidden = false;
-    el.escalationText.textContent = message;
-  } else {
-    el.escalationBanner.hidden = true;
-  }
-}
-
-// ---------------------------------------------------------------------
-// Schedule / "Today's plan"
-// ---------------------------------------------------------------------
-
-function renderSchedule(schedule) {
-  currentSchedule = schedule;
-  el.scheduleList.innerHTML = "";
-
-  for (const step of schedule) {
-    const li = document.createElement("li");
-    li.className = "schedule-step";
-    li.dataset.time = step.time;
-    li.innerHTML = `
-      <span class="step-time">${escapeHtml(step.time)}</span>
-      <span class="step-action">${escapeHtml(step.action)}</span>
-      <span class="step-detail">${escapeHtml(step.detail)}</span>`;
-    el.scheduleList.appendChild(li);
-  }
-
-  el.scheduleList.hidden = false;
-  el.ackBtn.hidden = false;
-  updateSchedulePassedState();
-}
-
-function updateSchedulePassedState() {
-  if (!currentSchedule || !currentSchedule.length) return;
-
-  const nowMinutes = nowMinutesIST();
-  let passed = 0;
-  let next = null;
-
-  for (const li of el.scheduleList.children) {
-    const stepMinutes = minutesSinceMidnight(li.dataset.time);
-    const isPassed = stepMinutes <= nowMinutes;
-    li.classList.toggle("step-passed", isPassed);
-    if (isPassed) passed += 1;
-    else if (!next) next = { time: li.dataset.time, action: li.querySelector(".step-action").textContent };
-  }
-
-  if (next) {
-    el.nextStepVal.textContent = next.time;
-    el.nextStepSubtext.textContent = next.action;
-  } else {
-    el.nextStepVal.textContent = "Done";
-    el.nextStepSubtext.textContent = "Shift plan complete";
-  }
-}
-
-function minutesSinceMidnight(hhmm) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-// The backend grounds schedule times in Asia/Kolkata (app.config.local_now).
-// Comparing against the browser's own local time would misjudge which
-// steps have passed for anyone not physically in IST.
-function nowMinutesIST() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const hour = Number(parts.find((p) => p.type === "hour").value);
-  const minute = Number(parts.find((p) => p.type === "minute").value);
-  return hour * 60 + minute;
-}
-
-setInterval(updateSchedulePassedState, 60000);
-
-function renderAcknowledged(acknowledged) {
-  el.ackBtn.classList.toggle("is-acknowledged", acknowledged);
-  el.ackBtn.disabled = acknowledged;
-  el.ackBtnLabel.textContent = acknowledged ? "Got it — noted" : "Got it";
-}
-
-async function handleAcknowledge() {
-  if (!activeWorkerId) return;
-  try {
-    await api(`/worker/${encodeURIComponent(activeWorkerId)}/acknowledge`, { method: "POST" });
-    renderAcknowledged(true);
-  } catch (err) {
-    console.error("Failed to record acknowledgment", err);
-  }
-}
-
-// ---------------------------------------------------------------------
-// Hydration (animated bottle + bar, real logged intake)
-// ---------------------------------------------------------------------
-
-function renderHydration(loggedMl, targetMl, { animate = true } = {}) {
-  const target = targetMl || 2000;
-  const fraction = Math.min(loggedMl / target, 1);
-
-  el.waterTargetVal.textContent = hydrationTargetMl ? `${Math.round(hydrationTargetMl / _shiftHoursGuess())} ml/hr` : "— ml/hr";
-  el.hydrationCurrentText.textContent = `${loggedMl} ml / ${target} ml today`;
-  el.hydrationBarFill.style.width = `${Math.round(fraction * 100)}%`;
-
-  const bottleInnerHeight = 82;
-  const fillHeight = bottleInnerHeight * fraction;
-  el.hydrationFill.setAttribute("y", String(90 - fillHeight));
-  el.hydrationFill.setAttribute("height", String(fillHeight));
-
-  if (animate) {
-    el.hydrationFill.classList.remove("just-logged");
-    void el.hydrationFill.offsetWidth;
-    el.hydrationFill.classList.add("just-logged");
-  }
-}
-
-function _shiftHoursGuess() {
-  if (!activeProfile) return 8;
-  const [sh, sm] = activeProfile.work_start.split(":").map(Number);
-  const [eh, em] = activeProfile.work_end.split(":").map(Number);
-  let mins = eh * 60 + em - (sh * 60 + sm);
-  if (mins <= 0) mins += 24 * 60;
-  return Math.max(mins / 60, 1);
-}
-
-async function logHydration(amountMl) {
-  if (!activeWorkerId) return;
-  el.btnLogSip.disabled = true;
-  try {
-    const res = await api(`/worker/${encodeURIComponent(activeWorkerId)}/hydration`, {
-      method: "POST",
-      body: { amount_ml: amountMl },
-    });
-    renderHydration(res.hydration_logged_ml, hydrationTargetMl, { animate: true });
-  } catch (err) {
-    console.error("Failed to log hydration", err);
-  } finally {
-    el.btnLogSip.disabled = false;
-  }
-}
-
-// ---------------------------------------------------------------------
-// Chat
-// ---------------------------------------------------------------------
-
-async function handleChatSubmit(e) {
-  e.preventDefault();
-  const message = el.chatInput.value.trim();
-  if (!message) return;
-  el.chatInput.value = "";
-  await sendMessage(message, { fromUser: true });
-}
-
-async function sendMessage(message, { fromUser }) {
-  if (fromUser) appendUserMessage(message);
-
-  el.btnSendMessage.disabled = true;
-  const typingEl = appendTypingIndicator();
-  scrollChatToBottom();
-
-  try {
-    const res = await api("/chat", { method: "POST", body: { worker_id: activeWorkerId, message } });
-    typingEl.remove();
-
-    appendBotMessage(res.reply, { escalate: res.escalate });
-    renderRisk(res.risk_level, res.escalate);
-    renderEscalation(res.escalate, res.reply);
-    renderWeather(res.temperature_c, res.feels_like_c, res.humidity_pct, res.peak_heat_hour, activeProfile);
-    hydrationTargetMl = res.hydration_target_ml;
-    renderHydration(res.hydration_logged_ml, res.hydration_target_ml, { animate: false });
-
-    if (res.schedule && res.schedule.length && JSON.stringify(res.schedule) !== JSON.stringify(currentSchedule)) {
-      renderSchedule(res.schedule);
-      renderAcknowledged(false);
-    }
-
-    if (el.prismDrawer.classList.contains("open")) loadPrismTraces();
-  } catch (err) {
-    typingEl.remove();
-    appendBotMessage(err.message || "Couldn't reach Solaris. Check your connection and try again.", { escalate: false });
-  } finally {
-    el.btnSendMessage.disabled = false;
-    scrollChatToBottom();
-  }
-}
-
-function appendUserMessage(text, { animate = true } = {}) {
-  const msg = document.createElement("div");
-  msg.className = "chat-msg user";
-  if (!animate) msg.style.animation = "none";
-  const bubble = document.createElement("div");
-  bubble.className = "chat-bubble";
-  bubble.textContent = text;
-  msg.appendChild(bubble);
-  el.chatHistory.appendChild(msg);
-  scrollChatToBottom();
-}
-
-function appendBotMessage(text, { escalate = false, animate = true } = {}) {
-  const msg = document.createElement("div");
-  msg.className = "chat-msg bot";
-  if (!animate) msg.style.animation = "none";
-
-  const avatar = document.createElement("div");
-  avatar.className = "chat-avatar";
-  avatar.textContent = "☀️";
-  msg.appendChild(avatar);
-
-  const bubble = document.createElement("div");
-  bubble.className = "chat-bubble";
-
-  if (escalate) {
-    const card = document.createElement("div");
-    card.className = "symptom-alert-card";
-    card.innerHTML = `<h5>🚨 Seek care now</h5><p></p>`;
-    card.querySelector("p").textContent = text;
-    bubble.appendChild(card);
-  } else {
-    bubble.textContent = text;
-  }
-
-  msg.appendChild(bubble);
-  el.chatHistory.appendChild(msg);
-  scrollChatToBottom();
-}
-
-function appendTypingIndicator() {
-  const msg = document.createElement("div");
-  msg.className = "chat-msg bot";
-  msg.innerHTML = `<div class="chat-avatar">☀️</div><div class="chat-bubble is-typing">Solaris is reasoning…</div>`;
-  el.chatHistory.appendChild(msg);
-  return msg;
-}
-
-function scrollChatToBottom() {
-  el.chatHistory.scrollTop = el.chatHistory.scrollHeight;
-}
-
-// ---------------------------------------------------------------------
-// PRISM live trace log
-// ---------------------------------------------------------------------
-
-async function loadPrismTraces() {
-  if (!activeWorkerId) return;
-  try {
-    const data = await api(`/worker/${encodeURIComponent(activeWorkerId)}/traces`, { method: "GET" });
-    el.prismSessionIdDisplay.textContent = data.session_id;
-
-    if (!data.traces.length) {
-      el.prismTracesContainer.innerHTML = `<div class="prism-empty">No traces yet — send a message to Solaris.</div>`;
-      return;
-    }
-
-    el.prismTracesContainer.innerHTML = data.traces
-      .slice()
-      .reverse()
-      .map((trace, idx) => {
-        const outputPreview = trace.output.length > 140 ? trace.output.slice(0, 140) + "…" : trace.output;
-        return `
-        <div class="prism-trace-card">
-          <div class="prism-trace-meta">
-            <span>#${data.traces.length - idx} · ${escapeHtml(trace.model)}</span>
-            <span>${trace.latency_ms}ms</span>
-          </div>
-          <div style="color:#c2410c;"><strong>Input:</strong> ${escapeHtml(trace.input)}</div>
-          <div style="color:#0f766e;"><strong>Output:</strong> ${escapeHtml(outputPreview)}</div>
-          <div style="color:${trace.delivered_to_prism ? "#0d9488" : "#94a3b8"};">
-            ${trace.delivered_to_prism ? "✓ delivered to PRISM" : "○ PRISM tracing not configured"}
-          </div>
-          <details style="margin-top:6px; color:#94a3b8; cursor:pointer;">
-            <summary>Full JSON</summary>
-            <div class="prism-json">${escapeHtml(JSON.stringify(trace, null, 2))}</div>
-          </details>
-        </div>`;
-      })
-      .join("");
-  } catch (err) {
-    console.error("Failed to load PRISM traces:", err);
-  }
-}
-
-// ---------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------
-
-function setButtonLoading(btn, isLoading) {
-  btn.classList.toggle("is-loading", isLoading);
-  btn.disabled = isLoading;
-}
-
-function showError(el_, text) {
-  el_.textContent = text;
-  el_.hidden = false;
-}
-
-function hideError(el_) {
-  el_.hidden = true;
-}
-
-function titleCase(str) {
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = String(text ?? '');
   return div.innerHTML;
 }
 
-async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+function toast(message) {
+  const element = $('toast');
+  element.textContent = message;
+  element.hidden = false;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { element.hidden = true; }, 5000);
+}
 
-  if (!res.ok) {
-    let detail = `Request failed (${res.status})`;
-    try {
-      const data = await res.json();
-      if (data.detail) detail = data.detail;
-    } catch (_) {
-      /* ignore parse errors */
-    }
-    throw new Error(detail);
+function plot(id, traces, layoutOverrides = {}) {
+  const node = $(id);
+  if (!node) return;
+  node.innerHTML = '';
+  Plotly.newPlot(node, traces, { ...PLOT_LAYOUT, ...layoutOverrides }, PLOT_CONFIG);
+}
+
+// --------------------------------------------------------------------------
+// Navigation
+// --------------------------------------------------------------------------
+
+const loaded = new Set();
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach((view) => {
+    view.classList.toggle('is-active', view.id === `view-${name}`);
+  });
+  document.querySelectorAll('.nav-link').forEach((link) => {
+    link.classList.toggle('is-active', link.dataset.view === name);
+  });
+  $('nav').classList.remove('is-open');
+  $('navToggle').setAttribute('aria-expanded', 'false');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (!loaded.has(name)) {
+    loaded.add(name);
+    const loader = VIEW_LOADERS[name];
+    if (loader) loader().catch((error) => { console.error(error); toast(error.message); });
+  }
+  if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
+}
+
+document.querySelectorAll('.nav-link').forEach((link) => {
+  link.addEventListener('click', () => showView(link.dataset.view));
+});
+$('navToggle').addEventListener('click', () => {
+  const nav = $('nav');
+  const open = nav.classList.toggle('is-open');
+  $('navToggle').setAttribute('aria-expanded', String(open));
+});
+
+// --------------------------------------------------------------------------
+// Overview
+// --------------------------------------------------------------------------
+
+let OVERVIEW = null;
+
+/** Coverage disclosure belongs on every view, not just the one that loads it. */
+async function loadCoverageBanner() {
+  try {
+    OVERVIEW = OVERVIEW || await api('/api/overview');
+    const note = OVERVIEW.data_coverage.refresh_note;
+    $('dataBannerText').textContent = note;
+    $('footerCoverage').textContent = note;
+  } catch (error) {
+    const message = 'Pipeline output not found — run `python -m solaris.cli all`.';
+    $('dataBannerText').textContent = message;
+    $('footerCoverage').textContent = message;
+  }
+}
+
+async function loadOverview() {
+  const grid = $('kpiGrid');
+  try {
+    OVERVIEW = OVERVIEW || await api('/api/overview');
+  } catch (error) {
+    showError(grid, error);
+    return;
   }
 
-  return res.json();
+  const coverage = OVERVIEW.data_coverage;
+
+  const version = OVERVIEW.model_version || {};
+  $('heroMeta').innerHTML = [
+    `<span class="pill">Dataset <strong>${dateOnly(coverage.first_hour_ist)} → ${dateOnly(coverage.last_hour_ist)}</strong></span>`,
+    `<span class="pill"><strong>${fmt(coverage.hours)}</strong> hours · ${coverage.pct_complete}% complete</span>`,
+    `<span class="pill">Test period <strong>${dateOnly(OVERVIEW.test_period.start)} → ${dateOnly(OVERVIEW.test_period.end)}</strong></span>`,
+    `<span class="pill">Model <strong>${escapeHtml(version.name || 'n/a')}</strong></span>`,
+  ].join('');
+
+  grid.innerHTML = OVERVIEW.kpis.map((kpi) => {
+    const decimals = kpi.unit === '%' ? 1 : 0;
+    return `
+      <div class="kpi">
+        <div class="kpi-label">${escapeHtml(kpi.label)}</div>
+        <div class="kpi-value">${fmt(kpi.value, decimals)}<span class="kpi-unit">${escapeHtml(kpi.unit)}</span></div>
+        <div class="kpi-detail">${escapeHtml(kpi.detail || '')}</div>
+      </div>`;
+  }).join('');
+
+  const models = await api('/api/models');
+  const contribution = models.weather_contribution;
+  const significance = contribution.significance || {};
+
+  $('findingGrid').innerHTML = `
+    <div class="finding">
+      <h3>Weather information helps</h3>
+      <div class="big">${fmt(contribution.mae_reduction_pct, 1)}%</div>
+      <p>Lower mean absolute error than the identical model without weather inputs
+      (${fmt(contribution.mae_mw_without_weather)} → ${fmt(contribution.mae_mw_with_weather)} MW).</p>
+    </div>
+    <div class="finding">
+      <h3>And it is not noise</h3>
+      <div class="big">p = ${significance.paired_t_pvalue ? significance.paired_t_pvalue.toExponential(1) : 'n/a'}</div>
+      <p>Paired t-test on daily error across ${fmt(significance.n_days)} held-out days;
+      ${fmt(significance.days_improved_pct, 0)}% of days improved.</p>
+    </div>
+    <div class="finding">
+      <h3>It helps most when it is hot</h3>
+      <div class="big">${fmt(contribution.mae_reduction_pct__hot_period, 1)}%</div>
+      <p>Error reduction on research-defined hot hours, against
+      ${fmt(contribution.mae_reduction_pct__non_hot_period, 1)}% on all other hours.</p>
+    </div>
+    <div class="finding">
+      <h3>Against the obvious baseline</h3>
+      <div class="big">${fmt(OVERVIEW.kpis[1].value, 1)}%</div>
+      <p>Lower error than simply reusing yesterday's demand at the same hour — the
+      baseline any model has to beat to be worth running.</p>
+    </div>`;
+
+  const series = await api('/api/series?hours=336');
+  drawSeries('plotOverviewSeries', series, 'lgbm_calendar_history', true);
 }
+
+// --------------------------------------------------------------------------
+// Forecast
+// --------------------------------------------------------------------------
+
+function drawSeries(nodeId, series, comparisonModel, showBand) {
+  const times = series.timestamps;
+  const columns = series.columns;
+  const traces = [];
+
+  if (showBand && columns.q10 && columns.q90) {
+    traces.push({
+      x: times, y: columns.q90, name: 'P90',
+      line: { width: 0 }, showlegend: false, hoverinfo: 'skip',
+    });
+    traces.push({
+      x: times, y: columns.q10, name: 'P10–P90 band',
+      line: { width: 0 }, fill: 'tonexty', fillcolor: PALETTE.band,
+      hoverinfo: 'skip',
+    });
+  }
+
+  traces.push({
+    x: times, y: columns.demand_mw, name: 'Actual demand',
+    line: { color: PALETTE.actual, width: 2.6 },
+    hovertemplate: '%{y:,.0f} MW<extra>Actual</extra>',
+  });
+  // Hours where the archived forecast is missing are left as gaps rather than
+  // interpolated, so the weather model's line genuinely stops there.
+  const gaps = columns.lgbm_weather.filter((v) => v === null).length;
+  if (gaps > 0) {
+    const note = $('coverageGapNote');
+    if (note) {
+      note.textContent =
+        `${gaps} hour${gaps === 1 ? '' : 's'} in this window have no archived weather `
+        + 'forecast, so the weather model produces no value for them. The gap is left '
+        + 'open rather than filled in.';
+      note.hidden = false;
+    }
+  }
+  traces.push({
+    x: times, y: columns.lgbm_weather, name: 'Weather-enhanced forecast',
+    line: { color: PALETTE.weather, width: 2 },
+    hovertemplate: '%{y:,.0f} MW<extra>Forecast</extra>',
+  });
+
+  if (comparisonModel && comparisonModel !== 'none' && columns[comparisonModel]) {
+    const label = comparisonModel === 'naive_lag_24h'
+      ? 'Naive: same hour yesterday' : 'Calendar + history model';
+    traces.push({
+      x: times, y: columns[comparisonModel], name: label,
+      line: { color: PALETTE.baseline, width: 1.5, dash: 'dot' },
+      hovertemplate: `%{y:,.0f} MW<extra>${label}</extra>`,
+    });
+  }
+
+  plot(nodeId, traces, { yaxis: { ...PLOT_LAYOUT.yaxis, title: 'All-India demand (MW)' } });
+}
+
+function windowStats(series) {
+  const actual = series.columns.demand_mw;
+  const predicted = series.columns.lgbm_weather;
+  let sum = 0;
+  let count = 0;
+  let peak = -Infinity;
+  let peakAt = null;
+
+  for (let i = 0; i < actual.length; i += 1) {
+    if (actual[i] !== null && predicted[i] !== null) {
+      sum += Math.abs(predicted[i] - actual[i]);
+      count += 1;
+    }
+    if (actual[i] !== null && actual[i] > peak) {
+      peak = actual[i];
+      peakAt = series.timestamps[i];
+    }
+  }
+
+  const mae = count ? sum / count : null;
+  $('windowStats').innerHTML = `
+    <div class="stat">
+      <div class="stat-label">Hours shown</div>
+      <div class="stat-value">${fmt(count)}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">MAE in this window</div>
+      <div class="stat-value">${fmt(mae)} <span class="kpi-unit">MW</span></div>
+      <div class="stat-sub">${mae ? fmtGW(mae, 2) : ''}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Peak demand in window</div>
+      <div class="stat-value">${fmtGW(peak === -Infinity ? null : peak)}</div>
+      <div class="stat-sub">${peakAt ? new Date(peakAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</div>
+    </div>`;
+}
+
+let RANGE = null;
+
+async function loadForecast() {
+  RANGE = await api('/api/series/range');
+  const first = dateOnly(RANGE.first);
+  const last = dateOnly(RANGE.last);
+
+  const startInput = $('startDate');
+  const endInput = $('endDate');
+  [startInput, endInput].forEach((input) => { input.min = first; input.max = last; });
+
+  // Default to the final 21 days of the test period.
+  const defaultStart = new Date(RANGE.last);
+  defaultStart.setDate(defaultStart.getDate() - 21);
+  startInput.value = dateOnly(defaultStart.toISOString());
+  endInput.value = last;
+
+  $('bandCaveat').textContent =
+    'The P10–P90 band is under-dispersed on this test period — it covers the actual '
+    + 'value less often than its nominal 80%. See Performance → Uncertainty band '
+    + 'calibration. Treat it as indicative, not as a calibrated risk band.';
+
+  await refreshForecast();
+
+  $('applyRange').addEventListener('click', refreshForecast);
+  $('modelSelect').addEventListener('change', refreshForecast);
+  $('showBand').addEventListener('change', refreshForecast);
+  $('jumpPeak').addEventListener('click', jumpToPeak);
+
+  try {
+    const figure = await api('/api/figures/peak_scatter');
+    renderSavedFigure('plotPeakScatter', figure);
+  } catch (error) {
+    showError($('plotPeakScatter'), error);
+  }
+}
+
+async function refreshForecast() {
+  const start = $('startDate').value;
+  const end = $('endDate').value;
+  if (start && end && start > end) {
+    toast('Start date must be on or before the end date.');
+    return;
+  }
+  const node = $('plotForecast');
+  node.innerHTML = '<div class="skeleton" style="height:420px"></div>';
+  try {
+    const series = await api(`/api/series?start=${start}&end=${end}`);
+    drawSeries('plotForecast', series, $('modelSelect').value, $('showBand').checked);
+    windowStats(series);
+  } catch (error) {
+    showError(node, error);
+  }
+}
+
+async function jumpToPeak() {
+  // Find the highest-demand day across the whole test period, then centre on it.
+  const all = await api('/api/series');
+  const actual = all.columns.demand_mw;
+  let peak = -Infinity;
+  let index = 0;
+  actual.forEach((value, i) => { if (value !== null && value > peak) { peak = value; index = i; } });
+
+  const peakDate = new Date(all.timestamps[index]);
+  const start = new Date(peakDate); start.setDate(start.getDate() - 5);
+  const end = new Date(peakDate); end.setDate(end.getDate() + 5);
+  const lastAvailable = new Date(RANGE.last);
+
+  $('startDate').value = dateOnly(start.toISOString());
+  // Clamp the window to the end of the test period; comparing Date objects
+  // needs getTime(), not a bare equality check against a coerced number.
+  $('endDate').value = dateOnly(
+    (end.getTime() <= lastAvailable.getTime() ? end : lastAvailable).toISOString()
+  );
+  await refreshForecast();
+  toast(`Peak demand hour: ${fmtGW(peak, 1)} on ${peakDate.toLocaleDateString('en-IN', { dateStyle: 'medium' })}`);
+}
+
+// --------------------------------------------------------------------------
+// Saved Plotly figures
+// --------------------------------------------------------------------------
+
+function renderSavedFigure(nodeId, figure) {
+  const node = $(nodeId);
+  if (!node) return;
+  node.innerHTML = '';
+
+  // Re-theme the saved figure without flattening its structure: some saved
+  // figures are subplots with xaxis2/yaxis2, so every axis present is restyled
+  // individually rather than replaced by a single xaxis/yaxis pair.
+  const saved = figure.layout || {};
+  const layout = {
+    ...saved,
+    title: undefined,
+    paper_bgcolor: PLOT_LAYOUT.paper_bgcolor,
+    plot_bgcolor: PLOT_LAYOUT.plot_bgcolor,
+    font: PLOT_LAYOUT.font,
+    legend: { ...(saved.legend || {}), ...PLOT_LAYOUT.legend },
+    margin: saved.margin && saved.margin.l > 90 ? saved.margin : PLOT_LAYOUT.margin,
+  };
+  Object.keys(saved).forEach((key) => {
+    if (/^[xy]axis\d*$/.test(key)) {
+      layout[key] = {
+        ...saved[key],
+        gridcolor: PLOT_LAYOUT.xaxis.gridcolor,
+        zeroline: false,
+      };
+    }
+  });
+
+  Plotly.newPlot(node, figure.data, layout, PLOT_CONFIG);
+}
+
+async function showSavedFigure(nodeId, name) {
+  try {
+    renderSavedFigure(nodeId, await api(`/api/figures/${name}`));
+  } catch (error) {
+    showError($(nodeId), error);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Heat and demand
+// --------------------------------------------------------------------------
+
+async function loadHeat() {
+  await showSavedFigure('plotTempDemand', 'temperature_vs_demand');
+
+  const [methods, models] = await Promise.all([
+    api('/api/methodology'), api('/api/models'),
+  ]);
+
+  const hot = methods.hot_period || {};
+  $('hotDefinition').textContent = hot.definition || '';
+
+  const contribution = models.weather_contribution;
+  const byModel = {};
+  models.models.forEach((row) => { byModel[row.model] = row; });
+
+  plot('plotHotSplit', [
+    {
+      type: 'bar', name: 'Without weather',
+      x: ['Hot hours', 'All other hours'],
+      y: [byModel.lgbm_calendar_history?.mae_hot_mw, byModel.lgbm_calendar_history?.mae_mw],
+      marker: { color: PALETTE.baseline },
+      text: [fmt(byModel.lgbm_calendar_history?.mae_hot_mw), fmt(byModel.lgbm_calendar_history?.mae_mw)],
+      textposition: 'outside',
+    },
+    {
+      type: 'bar', name: 'With weather',
+      x: ['Hot hours', 'All other hours'],
+      y: [byModel.lgbm_weather?.mae_hot_mw, byModel.lgbm_weather?.mae_mw],
+      marker: { color: PALETTE.weather },
+      text: [fmt(byModel.lgbm_weather?.mae_hot_mw), fmt(byModel.lgbm_weather?.mae_mw)],
+      textposition: 'outside',
+    },
+  ], {
+    barmode: 'group',
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'MAE (MW)' },
+    hovermode: 'closest',
+  });
+
+  // Sensitivity table across hot thresholds.
+  const sensitivity = methods.hot_threshold_sensitivity || {};
+  const rows = Object.entries(sensitivity).map(([name, entry]) => {
+    if (!entry.sufficient) {
+      return `<tr><td>${escapeHtml(name)}</td><td>${fmt(entry.threshold_c, 1)}</td>
+        <td>${fmt(entry.test_hours_hot)}</td>
+        <td colspan="3" class="muted">sample too small to report</td></tr>`;
+    }
+    const reduction = (1 - entry.lgbm_weather / entry.lgbm_calendar_history) * 100;
+    return `<tr>
+      <td>${escapeHtml(name)}</td>
+      <td>${fmt(entry.threshold_c, 1)}</td>
+      <td>${fmt(entry.test_hours_hot)}</td>
+      <td>${fmt(entry.lgbm_calendar_history)}</td>
+      <td>${fmt(entry.lgbm_weather)}</td>
+      <td><strong>${fmt(reduction, 1)}%</strong></td>
+    </tr>`;
+  }).join('');
+
+  $('hotSensitivityTable').innerHTML = `
+    <caption>Sensitivity: the same comparison at four hot-period thresholds. The weather
+    model wins at every threshold, so the finding does not depend on where the line is drawn.</caption>
+    <thead><tr>
+      <th>Percentile</th><th>Threshold (°C)</th><th>Hot hours</th>
+      <th>MAE without weather (MW)</th><th>MAE with weather (MW)</th><th>Reduction</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>`;
+}
+
+// --------------------------------------------------------------------------
+// Evening stress
+// --------------------------------------------------------------------------
+
+async function loadEvening() {
+  const [profile, stress] = await Promise.all([
+    api('/api/daily-profile'), api('/api/evening-stress'),
+  ]);
+
+  const full = stress.full_period || {};
+  $('residualDefinition').textContent = full.definition || 'Definition unavailable.';
+
+  const hours = profile.hours;
+  const columns = profile.columns;
+  plot('plotDailyProfile', [
+    {
+      x: hours, y: columns.solar_mw, name: 'Solar', fill: 'tozeroy',
+      line: { color: PALETTE.solar, width: 2 },
+      fillcolor: 'rgba(251,191,36,0.2)',
+    },
+    { x: hours, y: columns.wind_mw, name: 'Wind', line: { color: PALETTE.wind, width: 2 } },
+    { x: hours, y: columns.demand_mw, name: 'Demand', line: { color: PALETTE.actual, width: 2.6 } },
+    {
+      x: hours, y: columns.residual_load_mw, name: 'Residual load',
+      line: { color: PALETTE.residual, width: 2.6 },
+    },
+  ], {
+    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Hour of day (IST)', dtick: 2 },
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'MW' },
+  });
+
+  $('rampStats').innerHTML = `
+    <div class="stat">
+      <div class="stat-label">Mean steepest hourly ramp</div>
+      <div class="stat-value">${fmtGW(full.mean_max_hourly_ramp_mw, 1)}<span class="kpi-unit">/h</span></div>
+      <div class="stat-sub">Averaged over ${fmt(full.n_days)} full days</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">95th percentile ramp</div>
+      <div class="stat-value">${fmtGW(full.p95_max_hourly_ramp_mw, 1)}<span class="kpi-unit">/h</span></div>
+      <div class="stat-sub">1 day in 20 is at least this steep</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Steepest 3-hour ramp (mean)</div>
+      <div class="stat-value">${fmtGW(full.mean_max_3h_ramp_mw, 1)}</div>
+      <div class="stat-sub">Sustained evening pick-up</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Most common ramp hour</div>
+      <div class="stat-value">${String(full.modal_ramp_hour_ist ?? '--').padStart(2, '0')}:00</div>
+      <div class="stat-sub">IST; evening residual peak at ${String(full.modal_evening_peak_hour_ist ?? '--').padStart(2, '0')}:00</div>
+    </div>`;
+
+  await showSavedFigure('plotEveningRamp', 'evening_ramp');
+}
+
+// --------------------------------------------------------------------------
+// Performance
+// --------------------------------------------------------------------------
+
+async function loadPerformance() {
+  const [models, methods] = await Promise.all([
+    api('/api/models'), api('/api/methodology'),
+  ]);
+  const split = methods.split.test;
+
+  $('perfLede').textContent =
+    `Every model below was scored on the same held-out block: ${dateOnly(split.start)} `
+    + `to ${dateOnly(split.end)}, ${fmt(split.hours)} hours that no model saw during `
+    + `fitting, early stopping or threshold selection.`;
+
+  const best = models.models[0];
+  $('modelTable').innerHTML = `
+    <thead><tr>
+      <th>Model</th><th>MAE (MW)</th><th>RMSE (MW)</th><th>MAPE %</th>
+      <th>Bias (MW)</th><th>vs naive</th><th>Hot MAE</th><th>Peak MAE</th><th>Peak hour ±h</th>
+    </tr></thead>
+    <tbody>${models.models.map((row) => `
+      <tr class="${row.model === best.model ? 'is-best' : ''}">
+        <td>${escapeHtml(row.model)}<span class="family-tag">${escapeHtml(row.family)}</span></td>
+        <td>${fmt(row.mae_mw)}</td>
+        <td>${fmt(row.rmse_mw)}</td>
+        <td>${fmt(row.mape_pct, 2)}</td>
+        <td>${fmt(row.bias_mw)}</td>
+        <td>${row.skill_vs_naive_pct === null ? 'n/a' : `${fmt(row.skill_vs_naive_pct, 1)}%`}</td>
+        <td>${row.mae_hot_mw === null ? '<span class="muted">n/a</span>' : fmt(row.mae_hot_mw)}</td>
+        <td>${fmt(row.peak_mae_mw)}</td>
+        <td>${fmt(row.peak_hour_mae_h, 2)}</td>
+      </tr>`).join('')}</tbody>`;
+
+  await Promise.all([
+    showSavedFigure('plotErrorByHour', 'error_by_hour'),
+    showSavedFigure('plotResiduals', 'residuals'),
+    showSavedFigure('plotCalibration', 'quantile_calibration'),
+  ]);
+
+  const extrapolation = models.extrapolation || {};
+  $('extrapolationBody').innerHTML = `
+    <p class="prose">Two of the models in the table — the ones ending <code>_level</code> —
+    are <em>worse</em> than simply reusing yesterday's demand. That is reported rather than
+    dropped, because the reason is instructive.</p>
+    <p class="prose">A gradient-boosted tree predicts an average of values it saw in training,
+    so it can never output a number above its training maximum. All-India demand grew
+    through the period: the training block topped out at
+    <strong>${fmtGW(extrapolation.train_max_demand_mw)}</strong>, but the test block reaches
+    <strong>${fmtGW(extrapolation.test_max_demand_mw)}</strong>, with
+    <strong>${fmt(extrapolation.test_hours_above_train_max)}</strong> test hours above
+    anything the model had ever seen.</p>
+    <p class="prose">The level model duly saturates — its highest prediction across the whole
+    test period is ${fmtGW(extrapolation.level_model_max_prediction_mw)}. The models used for
+    the headline results predict the <em>change</em> from the same hour yesterday and add that
+    anchor back, which lifts the ceiling: their highest prediction is
+    ${fmtGW(extrapolation.delta_model_max_prediction_mw)}.</p>`;
+
+  const quantile = methods.quantile || {};
+  const interval = quantile.interval_p10_p90 || {};
+  const validation = quantile.validation_calibration?.interval_p10_p90 || {};
+  const volatility = quantile.target_volatility || {};
+  $('calibrationNote').innerHTML = `
+    <div class="callout callout-warn" style="margin-top:16px">
+      <strong>The uncertainty band is not well calibrated, and should not be used as one.</strong>
+      <span>The P10–P90 interval covers the actual value
+      ${interval.empirical_coverage ? `${(interval.empirical_coverage * 100).toFixed(1)}%` : 'n/a'}
+      of the time on the test period, against a nominal 80%. On the validation block it
+      covers ${validation.empirical_coverage ? `${(validation.empirical_coverage * 100).toFixed(1)}%` : 'n/a'},
+      so the band is roughly right where it was tuned and too narrow out of sample. The
+      validation block (January–February) has a mean daily demand range of
+      ${fmtGW(volatility.valid?.daily_range_mean_mw)} against
+      ${fmtGW(volatility.test?.daily_range_mean_mw)} on test, which is the kind of
+      distribution shift that produces exactly this failure. Reported as measured; fixing it
+      would need recalibration on a period that spans a hot season.</span>
+    </div>`;
+}
+
+// --------------------------------------------------------------------------
+// Explainability
+// --------------------------------------------------------------------------
+
+async function loadExplain() {
+  const explain = await api('/api/explainability');
+  $('explainCaveat').textContent = explain.caveat;
+
+  const entries = Object.entries(explain.gain_importance).slice(0, 18).reverse();
+  plot('plotImportance', [{
+    type: 'bar', orientation: 'h',
+    x: entries.map(([, value]) => value),
+    y: entries.map(([name]) => name),
+    marker: {
+      color: entries.map(([name]) =>
+        (name.includes('temp') || name.includes('cdd') || name.includes('hdd') || name.includes('heat'))
+          ? PALETTE.weather : PALETTE.baseline),
+    },
+    hovertemplate: '%{y}: %{x:.3f}<extra></extra>',
+  }], {
+    height: 520,
+    margin: { l: 215, r: 24, t: 10, b: 44 },
+    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Share of total split gain' },
+    yaxis: { ...PLOT_LAYOUT.yaxis, automargin: true },
+    hovermode: 'closest',
+  });
+}
+
+// --------------------------------------------------------------------------
+// Methodology
+// --------------------------------------------------------------------------
+
+async function loadMethods() {
+  const methods = await api('/api/methodology');
+
+  $('methodConvention').textContent = methods.forecast_convention;
+
+  $('splitTable').innerHTML = ['train', 'valid', 'test'].map((part) => {
+    const block = methods.split[part];
+    return `<div class="split-row ${part}">
+      <b>${part}</b>
+      <span class="range">${dateOnly(block.start)} → ${dateOnly(block.end)}</span>
+      <span class="hours">${fmt(block.hours)} h</span>
+    </div>`;
+  }).join('');
+
+  $('sourceList').innerHTML = methods.sources.map((source) => `
+    <div class="source">
+      <h3>${escapeHtml(source.name)}</h3>
+      <div class="meta">${escapeHtml(source.via)} · ${escapeHtml(source.licence)}</div>
+      <div class="note">${escapeHtml(source.note)}</div>
+      <div class="note"><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.url)}</a></div>
+    </div>`).join('');
+
+  const weighting = methods.weighting_sensitivity || {};
+  $('weightingTable').innerHTML = `
+    <caption>Weather aggregation weighting — the weather model wins under all three schemes,
+    so the conclusion does not rest on the choice of city weights.</caption>
+    <thead><tr><th>Scheme</th><th>MAE (MW)</th><th>Reduction vs no weather</th></tr></thead>
+    <tbody>${Object.entries(weighting).map(([name, entry]) => `
+      <tr><td>${escapeHtml(name)}</td><td>${fmt(entry.mae_mw)}</td>
+      <td>${fmt(entry.mae_reduction_vs_no_weather_pct, 2)}%</td></tr>`).join('')}</tbody>`;
+
+  const rolling = methods.rolling_backtest || {};
+  $('rollingTable').innerHTML = `
+    <caption>Rolling-origin backtest: the model is refitted every month on all earlier data
+    and scored on the month it has never seen. Mean MAE across folds.</caption>
+    <thead><tr><th>Model</th><th>Mean fold MAE (MW)</th></tr></thead>
+    <tbody>${Object.entries(rolling).map(([name, value]) => `
+      <tr><td>${escapeHtml(name)}</td><td>${fmt(value)}</td></tr>`).join('')}</tbody>`;
+
+  $('limitationList').innerHTML = methods.limitations
+    .map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+}
+
+// --------------------------------------------------------------------------
+// Boot
+// --------------------------------------------------------------------------
+
+const VIEW_LOADERS = {
+  overview: loadOverview,
+  forecast: loadForecast,
+  heat: loadHeat,
+  evening: loadEvening,
+  performance: loadPerformance,
+  explain: loadExplain,
+  methods: loadMethods,
+};
+
+function viewFromHash() {
+  const name = (location.hash || '#overview').slice(1);
+  return VIEW_LOADERS[name] ? name : 'overview';
+}
+
+// Deep links, bookmarks and the browser's back/forward buttons all change the
+// hash without reloading, so the view has to follow it.
+window.addEventListener('hashchange', () => {
+  const name = viewFromHash();
+  const current = document.querySelector('.view.is-active');
+  if (current && current.id === `view-${name}`) return;
+  showView(name);
+});
+
+loadCoverageBanner();
+showView(viewFromHash());

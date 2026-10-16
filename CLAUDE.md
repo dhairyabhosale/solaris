@@ -1,37 +1,76 @@
-# Solaris — notes for coding agents
+# Solaris Grid Intelligence — notes for coding agents
 
-## PRISM tracing (do not remove)
+Day-ahead all-India electricity demand forecasting with archived weather
+forecasts, plus evening grid-stress analysis. See `README.md` for the project
+overview and `docs/METHODOLOGY.md` for the full method.
 
-This project sends traces to PRISM (Block Convey). Env vars:
-`PRISMTRACE_API_KEY`, `PRISMTRACE_PROJECT_ID`, `PRISMTRACE_HOST`.
+## Layout
 
-This is a **side-channel trace POST**, not a proxy the LLM call routes
-through — `app/services/prism.py` calls Groq directly, then best-effort
-POSTs one trace to `{PRISMTRACE_HOST}/api/traces` with header
-`X-PRISMtrace-Key` (not `Authorization: Bearer`). A missing key or a
-failed POST never affects the chat reply — `_emit_trace` only logs a
-warning and returns.
+- `src/solaris/` — the research pipeline. Importable, tested, no web imports.
+- `app/` — FastAPI read-only presentation layer. It must never fit a model or
+  compute a metric. It reads **only** the static JSON bundle in `app/data/`
+  that `solaris.webexport` writes, using the standard library.
+  **Do not import pandas, numpy or the modelling stack anywhere under `app/`** —
+  the root `requirements.txt` is the deployment manifest and holds just four
+  packages. A test parses the tree and fails if this is broken.
+- `tests/` — must run offline, with no network, no downloads and no API keys.
 
-Tracing is currently wired at: `app/services/prism.py` (`_emit_trace`,
-called from `chat_completion`). That is the only place an LLM call
-happens in this repo (`app/services/llm.py` builds the prompt and calls
-`prism.chat_completion`; `app/routes/chat.py` is the only caller of
-that).
+## Standing rules
 
-**Standing rule.** Whenever you add or change an agent, chain, graph,
-tool, retriever, or any entry point that calls a model, wire it to
-PRISM before you finish. Unwired code is invisible in the dashboard. If
-you are unsure whether something is covered, assume it is not and wire
-it.
+**No metric is ever hand-written.** `reports/evaluation.json` is the single
+source of every number the project publishes. The README, the docs, the
+figures and the dashboard all render from it. If you need to change a reported
+number, change the code that computes it and re-run
+`python -m solaris.cli train && python -m solaris.cli report`.
 
-**Verification status:** confirmed live and connected, visible directly
-on the PRISM dashboard (prism.blockconvey.com) after a real chat message
-was sent through the running app. The coding session that wired this up
-could not run the handshake/doctor curls itself — its own sandbox
-blocked outbound requests carrying `PRISMTRACE_API_KEY` as a
-data-exfiltration risk, independent of the human operator's approval —
-so the human operator ran the app and checked the dashboard directly
-instead. If tracing ever looks like it's stopped working, the doctor
-endpoint is still the fastest way to check why:
-`GET /api/setup-doctor?project_id=$PRISMTRACE_PROJECT_ID` with header
-`X-PRISMtrace-Key`, reading `live_connected` and `blocked_step`.
+**Leakage safeguards are load-bearing — do not weaken them.**
+`solaris.features.assert_no_leakage` rejects observed weather (`*_obs`),
+contemporaneous grid measurements, and any demand lag under 24 hours. The
+forecast-issue convention is 09:00 IST on day D−1 for every hour of day D. If
+you add a feature, it must be derivable from information available at that
+moment, and it must pass the guard. Splits are chronological; never introduce
+a random split.
+
+**Negative results stay in.** The `_level` model variants lose to the naive
+baseline because gradient-boosted trees cannot extrapolate past their training
+maximum. That is reported deliberately, on the dashboard and in the docs. The
+quantile band is poorly calibrated and is labelled as such. Do not quietly
+drop either.
+
+**No LLM dependency.** The analysis, the model and the dashboard must work
+with no third-party model provider and no API key. There are currently no
+required environment variables.
+
+## Commands
+
+```bash
+python -m solaris.cli fetch-grid      # ~713 MB from Mendeley
+python -m solaris.cli fetch-weather   # archived forecasts, 18 cities
+python -m solaris.cli prepare         # parse, join, quality-check
+python -m solaris.cli train --rolling # fit and evaluate every model
+python -m solaris.cli report          # regenerate figures and tables
+
+pytest
+uvicorn app.main:app --reload
+vercel --prod                         # deploy (needs `vercel login` first)
+```
+
+Dependencies are split: `requirements.txt` is the web app only (what Vercel
+installs); `requirements-research.txt` is the full pipeline.
+
+## Things that will trip you up
+
+- The Mendeley workbooks are **not hourly** despite the dataset title: 5-minute
+  before October 2022, 10-second after. The sample period is read from each
+  file's hidden `_osi_config` sheet.
+- Columns H/I/J of those workbooks are **Excel formulas**, not values. They are
+  recomputed from the raw SCADA points; do not read them.
+- Raw solar goes **negative at night** (SCADA offset). Always use `solar_mw`,
+  which is clipped at zero, not `solar_raw_mw`.
+- Mendeley's edge returns **403 to `requests`** regardless of User-Agent — it
+  appears to fingerprint the TLS handshake. Use `httpx`.
+- Only `temperature_2m` is archived at a day-ahead lead by Open-Meteo for
+  2021–2023. Other variables return HTTP 200 with an all-null series. Do not
+  "fix" this by substituting observed values.
+- The test period is placed to contain a hot season on purpose. An earlier
+  split had zero hot test hours, which made the central analysis impossible.

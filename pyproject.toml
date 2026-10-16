@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solaris-grid-intelligence"
+version = "1.0.0"
+description = "Heat-aware electricity demand forecasting and evening grid stress analysis for India"
+requires-python = ">=3.11"
+readme = "README.md"
+
+# RUNTIME dependencies for the deployed web app only.
+#
+# Vercel's Python runtime reads this list in preference to requirements.txt,
+# so it must stay in sync with requirements.txt and must stay small: the
+# dashboard parses a pre-exported JSON bundle with the standard library and
+# needs no pandas, numpy or pyarrow.
+#
+# The research pipeline's dependencies live in requirements-research.txt and
+# are deliberately NOT listed here, so they are never shipped to the function.
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30,<1.0",
+    "pydantic>=2.8,<3.0",
+    "pydantic-settings>=2.4,<3.0",
+]
+
+[project.optional-dependencies]
+research = [
+    "pandas>=2.2", "numpy>=1.26", "pyarrow>=16.0", "openpyxl>=3.1,<4.0",
+    "holidays>=0.50", "scikit-learn>=1.5", "scipy>=1.13",
+    "lightgbm>=4.3,<5.0", "shap>=0.45", "plotly>=5.22", "httpx>=0.27,<1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.vercel]
+# Be explicit about the ASGI entrypoint. Without this, Vercel's framework
+# detection has to choose between `app/main.py` and the legacy `api/` handler,
+# and the `functions` key in vercel.json must name whichever it picked -- if
+# they disagree, `excludeFiles` is silently ignored and the whole data/
+# directory lands in the bundle.
+entrypoint = "app.main:app"

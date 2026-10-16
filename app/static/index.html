@@ -1,362 +1,344 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Solaris — Heat Safety Companion</title>
-  <meta name="description" content="AI-powered Heat Safety Companion for outdoor and construction workers. Real-time heat risk reasoning and PRISM evaluation.">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solaris Grid Intelligence</title>
+<meta name="description" content="Heat-aware day-ahead electricity demand forecasting and evening grid stress analysis for India.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 </head>
 <body>
 
-  <!-- ===================== FULL-SCREEN ONBOARDING (first visit) ===================== -->
-  <section class="onboarding-screen" id="onboardingScreen" hidden>
-    <div class="onboarding-card">
-      <div class="onboarding-brand">
-        <div class="logo-badge">☀️</div>
-        <div class="brand-text">
-          <h1>Solaris</h1>
-          <div class="brand-tag">Heat Safety Companion</div>
-        </div>
-      </div>
-      <p class="onboarding-intro">
-        Tell us about your shift. Every day you check in, Solaris reads today's real
-        weather and gives you a break-and-hydration plan built for the heat you're
-        actually working in.
-      </p>
+<a class="skip-link" href="#main">Skip to content</a>
 
-      <form id="onboardingForm" novalidate>
-        <div class="form-group">
-          <label class="form-label" for="obWorkerId">Your name or worker ID</label>
-          <input type="text" id="obWorkerId" class="form-input" placeholder="e.g. Ramesh K." required autocomplete="off" />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="obWorkType">Trade / work type</label>
-          <select id="obWorkType" class="form-select" required>
-            <option value="" disabled selected>Select your work type</option>
-            <option value="construction - general labor">General labor</option>
-            <option value="construction - rebar/concrete">Rebar / concrete</option>
-            <option value="roofing">Roofing</option>
-            <option value="masonry">Masonry</option>
-            <option value="landscaping">Landscaping</option>
-            <option value="electrical/mechanical">Electrical / mechanical</option>
-            <option value="delivery/gig work">Delivery / gig work</option>
-            <option value="other">Other outdoor work</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="obLocation">Jobsite city / area</label>
-          <input type="text" id="obLocation" class="form-input" placeholder="e.g. Chennai" required autocomplete="off" />
-        </div>
-        <div class="field-row">
-          <div class="form-group">
-            <label class="form-label" for="obStart">Shift start</label>
-            <input type="time" id="obStart" class="form-input" value="07:00" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="obEnd">Shift end</label>
-            <input type="time" id="obEnd" class="form-input" value="16:00" required />
-          </div>
-        </div>
-        <button type="submit" class="btn-primary-modal" id="onboardingSubmit">
-          <span class="btn-label">Start my check-in</span>
-          <span class="btn-spinner" aria-hidden="true"></span>
-        </button>
-        <p class="form-error" id="onboardingError" role="alert" hidden></p>
-      </form>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">⚡</span>
+      <span class="brand-text">
+        <strong>Solaris</strong>
+        <span class="brand-sub">Grid Intelligence</span>
+      </span>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections">
+      <button class="nav-link is-active" data-view="overview">Overview</button>
+      <button class="nav-link" data-view="forecast">Forecast</button>
+      <button class="nav-link" data-view="heat">Heat &amp; demand</button>
+      <button class="nav-link" data-view="evening">Evening stress</button>
+      <button class="nav-link" data-view="performance">Performance</button>
+      <button class="nav-link" data-view="explain">Explainability</button>
+      <button class="nav-link" data-view="methods">Data &amp; methods</button>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="nav" aria-label="Toggle navigation">☰</button>
+  </div>
+  <div class="data-banner" id="dataBanner" role="status">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="dataBannerText">Loading dataset coverage…</span>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ OVERVIEW ============ -->
+  <section class="view is-active" id="view-overview">
+    <div class="hero">
+      <p class="eyebrow">Day-ahead demand forecasting · India</p>
+      <h1>Can weather-aware machine learning improve day-ahead electricity-demand forecasts in India?</h1>
+      <p class="lede" id="heroLede">
+        Solaris forecasts every hour of tomorrow's all-India electricity demand using only
+        information a forecaster would genuinely have had the day before — including the
+        archived weather forecast, never the observed weather.
+      </p>
+      <div class="hero-meta" id="heroMeta"></div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="skeleton kpi-skeleton"></div>
+      <div class="skeleton kpi-skeleton"></div>
+      <div class="skeleton kpi-skeleton"></div>
+      <div class="skeleton kpi-skeleton"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>The headline result</h2>
+      </div>
+      <div class="finding-grid" id="findingGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Forecast against actual</h2>
+        <p class="card-sub">Last 14 days of the held-out test period. The model never saw these hours during fitting.</p>
+      </div>
+      <div class="plot" id="plotOverviewSeries"></div>
     </div>
   </section>
 
-  <!-- ===================== MAIN APP ===================== -->
-  <div id="appRoot" hidden>
+  <!-- ============ FORECAST ============ -->
+  <section class="view" id="view-forecast">
+    <div class="view-head">
+      <h1>Demand forecast</h1>
+      <p class="lede">Hourly actual demand against the day-ahead forecast, over the held-out test
+      period. Pick any window — every point shown is an out-of-sample prediction.</p>
+    </div>
 
-    <header class="app-header">
-      <div class="header-container">
-        <div class="brand-wrapper">
-          <div class="logo-badge">☀️</div>
-          <div class="brand-text">
-            <h1>Solaris</h1>
-            <div class="brand-tag">Heat Safety Companion</div>
-          </div>
+    <div class="card">
+      <div class="controls" id="forecastControls">
+        <div class="control">
+          <label for="startDate">From</label>
+          <input type="date" id="startDate">
         </div>
-
-        <div class="header-actions">
-          <div class="live-clock" id="liveClock" aria-live="off">
-            <span class="live-clock-time" id="liveClockTime">--:--:--</span>
-            <span class="live-clock-date" id="liveClockDate">IST</span>
-          </div>
-
-          <button class="worker-pill" id="btnOpenSwitcher" title="Switch or add a worker">
-            <div class="worker-avatar">👷</div>
-            <div class="worker-info-inline">
-              <span class="worker-name-text" id="workerPillName">—</span>
-              <span class="worker-role-text" id="workerPillRole">—</span>
-            </div>
-          </button>
-
-          <button class="btn-sos" id="btnSos" title="Emergency Heat Triage">
-            <span>🚨</span> SOS
-          </button>
-
-          <button class="btn-prism-toggle" id="btnTogglePrism" title="Toggle PRISM live trace log">
-            <span>🔬</span> PRISM Traces
-          </button>
+        <div class="control">
+          <label for="endDate">To</label>
+          <input type="date" id="endDate">
         </div>
-      </div>
-    </header>
-
-    <main class="main-layout">
-
-      <!-- Left Column -->
-      <section class="dashboard-left">
-
-        <!-- Thermal Risk & Live Weather Card -->
-        <div class="glass-card">
-          <div class="card-header">
-            <div class="card-title"><span>🌡️</span> Live Thermal Risk Radar</div>
-            <div class="badge-risk unknown" id="heatRiskBadge">
-              <span>●</span> <span id="heatRiskBadgeText">Awaiting check-in</span>
-            </div>
-          </div>
-
-          <div class="heat-radar-grid">
-            <div class="dial-container">
-              <svg class="gauge-svg" viewBox="0 0 160 160">
-                <circle class="gauge-bg" cx="80" cy="80" r="70" />
-                <circle class="gauge-progress" id="gaugeProgress" cx="80" cy="80" r="70" />
-              </svg>
-              <div class="dial-center-text">
-                <div class="heat-index-val" id="heatIndexVal">--</div>
-                <div class="heat-index-unit">°C feels like</div>
-                <div class="heat-index-label" id="heatIndexLabel">HEAT INDEX</div>
-              </div>
-            </div>
-
-            <div class="weather-stats-list">
-              <div class="stat-box">
-                <div class="stat-label"><span>📍</span> Location</div>
-                <div class="stat-value" id="locationVal">—</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label"><span>☀️</span> Ambient Temp</div>
-                <div class="stat-value" id="tempVal">—°C</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label"><span>💧</span> Relative Humidity</div>
-                <div class="stat-value" id="humidityVal">—%</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label"><span>🔥</span> Peak Heat Hour</div>
-                <div class="stat-value" id="peakHourVal">—:00</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="escalation-banner" id="escalationBanner" hidden>
-            <div class="escalation-icon">🚨</div>
-            <div class="escalation-content">
-              <h4>Heat Danger Advisory</h4>
-              <p id="escalationText">—</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Shift Safety Protocol & Hydration Card -->
-        <div class="glass-card">
-          <div class="card-header">
-            <div class="card-title"><span>📋</span> Daily Shift Safety Protocol</div>
-          </div>
-
-          <div class="protocol-cards-grid">
-            <div class="protocol-mini-card">
-              <div class="protocol-header">
-                <div class="protocol-title"><span>⏳</span> Next Step</div>
-              </div>
-              <div class="protocol-highlight" id="nextStepVal">—</div>
-              <div class="protocol-subtext" id="nextStepSubtext">No plan yet</div>
-            </div>
-
-            <div class="protocol-mini-card">
-              <div class="protocol-header">
-                <div class="protocol-title"><span>💧</span> Hydration Rate</div>
-              </div>
-              <div class="protocol-highlight" id="waterTargetVal">— ml/hr</div>
-              <div class="protocol-subtext">Water or electrolyte fluid</div>
-            </div>
-          </div>
-
-          <ol class="schedule-list" id="scheduleList" hidden></ol>
-          <button type="button" class="btn-ack" id="ackBtn" hidden>
-            <span>✓</span> <span id="ackBtnLabel">Got it</span>
-          </button>
-
-          <!-- Interactive Hydration Tracker (animated bottle) -->
-          <div class="hydration-interactive-card" style="margin-top: 1rem;">
-            <div class="hydration-bottle-wrap">
-              <svg class="hydration-bottle" viewBox="0 0 40 90">
-                <defs>
-                  <linearGradient id="bottleGradient" x1="0" y1="1" x2="0" y2="0">
-                    <stop offset="0%" stop-color="#0d9488" />
-                    <stop offset="100%" stop-color="#14b8a6" />
-                  </linearGradient>
-                  <clipPath id="bottleClip">
-                    <path d="M14 4h12v9l4 7v60a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V20l4-7V4Z" />
-                  </clipPath>
-                </defs>
-                <path class="bottle-outline" d="M14 4h12v9l4 7v60a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V20l4-7V4Z" />
-                <g clip-path="url(#bottleClip)" class="bottle-wave">
-                  <rect class="bottle-fill" id="hydrationFill" x="6" y="90" width="28" height="0" />
-                </g>
-                <line class="bottle-cap" x1="14" y1="4" x2="26" y2="4" />
-              </svg>
-            </div>
-            <div class="hydration-info">
-              <div class="hydration-header-row">
-                <span class="hydration-title"><span>🌊</span> Shift Hydration Log</span>
-                <span class="hydration-count-text" id="hydrationCurrentText">0 ml logged</span>
-              </div>
-              <div class="hydration-bar-wrapper">
-                <div class="hydration-bar-fill" id="hydrationBarFill"></div>
-              </div>
-              <div class="hydration-action-row">
-                <span style="font-size:0.72rem; color:var(--text-muted);">Small sips every 15–20 min prevent cramping</span>
-                <button class="btn-sip-log" id="btnLogSip">
-                  <span>+</span> Log 250ml
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- Right Column: Chat -->
-      <section class="dashboard-right">
-        <div class="glass-card chat-container">
-          <div class="card-header" style="margin-bottom:0.75rem;">
-            <div class="card-title"><span>💬</span> Heat Safety Companion</div>
-            <span style="font-size:0.72rem; color:var(--orange-dark); font-weight:700; display:flex; align-items:center; gap:4px;">
-              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--teal-primary);"></span> Online
-            </span>
-          </div>
-
-          <div class="chat-history" id="chatHistory" aria-live="polite"></div>
-
-          <div class="quick-chips-row">
-            <button class="chip-btn" data-msg="I can't take a break right now, what is the bare minimum harm reduction?">⚡ Can't break right now</button>
-            <button class="chip-btn" data-msg="I'm feeling dizzy and I haven't been sweating. What should I do?">🚨 Feeling dizzy / not sweating</button>
-            <button class="chip-btn" data-msg="What should I drink besides plain water for heavy sweating?">💧 Hydration & electrolytes</button>
-            <button class="chip-btn" data-msg="When is the peak heat hour during my shift today?">🕒 When is peak heat?</button>
-          </div>
-
-          <form class="chat-input-bar" id="chatForm">
-            <input type="text" class="chat-input" id="chatInput" placeholder="Ask Solaris about heat risk, breaks, or report symptoms..." autocomplete="off" required />
-            <button type="submit" class="btn-send" id="btnSendMessage" title="Send message">➤</button>
-          </form>
-        </div>
-      </section>
-
-    </main>
-
-    <!-- PRISM Observability Drawer -->
-    <aside class="prism-drawer" id="prismDrawer">
-      <div class="prism-drawer-header">
-        <h3><span>🔬</span> PRISM Live Trace Log</h3>
-        <button class="prism-drawer-close" id="btnClosePrism">✕</button>
-      </div>
-      <div class="prism-session-line">
-        Session: <span id="prismSessionIdDisplay">—</span> | Agent: <span>solaris-heat-safety</span>
-      </div>
-      <div class="prism-body" id="prismTracesContainer">
-        <div class="prism-empty">No traces yet — send a message to Solaris.</div>
-      </div>
-    </aside>
-
-  </div>
-
-  <!-- ===================== Worker Switcher Modal ===================== -->
-  <div class="modal-overlay" id="switcherModal">
-    <div class="modal-content">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem;">
-        <h3 style="font-family:'Outfit', sans-serif; font-size:1.2rem;">Switch worker</h3>
-        <button class="modal-close" id="btnCloseSwitcher">✕</button>
-      </div>
-
-      <div class="worker-list" id="workerList"></div>
-
-      <button type="button" class="btn-add-worker" id="btnShowAddWorker">+ Add a new worker</button>
-
-      <form id="addWorkerForm" hidden style="margin-top: 1.1rem;">
-        <div class="form-group">
-          <label class="form-label" for="awWorkerId">Name or worker ID</label>
-          <input type="text" id="awWorkerId" class="form-input" placeholder="e.g. Ramesh K." required autocomplete="off" />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="awWorkType">Trade / work type</label>
-          <select id="awWorkType" class="form-select" required>
-            <option value="" disabled selected>Select your work type</option>
-            <option value="construction - general labor">General labor</option>
-            <option value="construction - rebar/concrete">Rebar / concrete</option>
-            <option value="roofing">Roofing</option>
-            <option value="masonry">Masonry</option>
-            <option value="landscaping">Landscaping</option>
-            <option value="electrical/mechanical">Electrical / mechanical</option>
-            <option value="delivery/gig work">Delivery / gig work</option>
-            <option value="other">Other outdoor work</option>
+        <div class="control">
+          <label for="modelSelect">Compare against</label>
+          <select id="modelSelect">
+            <option value="lgbm_calendar_history">Calendar + history model</option>
+            <option value="naive_lag_24h">Naive: same hour yesterday</option>
+            <option value="none">Nothing</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="awLocation">Jobsite city / area</label>
-          <input type="text" id="awLocation" class="form-input" placeholder="e.g. Chennai" required autocomplete="off" />
+        <div class="control control-check">
+          <label><input type="checkbox" id="showBand" checked> Show P10–P90 band</label>
         </div>
-        <div class="field-row">
-          <div class="form-group">
-            <label class="form-label" for="awStart">Shift start</label>
-            <input type="time" id="awStart" class="form-input" value="07:00" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="awEnd">Shift end</label>
-            <input type="time" id="awEnd" class="form-input" value="16:00" required />
-          </div>
-        </div>
-        <button type="submit" class="btn-primary-modal" id="addWorkerSubmit">
-          <span class="btn-label">Add & switch to this worker</span>
-          <span class="btn-spinner" aria-hidden="true"></span>
-        </button>
-        <p class="form-error" id="addWorkerError" role="alert" hidden></p>
-      </form>
+        <button class="btn" id="applyRange">Update</button>
+        <button class="btn btn-ghost" id="jumpPeak">Jump to peak-demand day</button>
+      </div>
+      <p class="inline-caveat" id="bandCaveat"></p>
+      <p class="inline-caveat" id="coverageGapNote" hidden></p>
+      <div class="plot plot-tall" id="plotForecast"></div>
+      <div class="window-stats" id="windowStats"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Daily peak demand: predicted vs actual</h2>
+        <p class="card-sub">Each point is one day of the test period.</p>
+      </div>
+      <div class="plot" id="plotPeakScatter"></div>
+    </div>
+  </section>
+
+  <!-- ============ HEAT ============ -->
+  <section class="view" id="view-heat">
+    <div class="view-head">
+      <h1>Heat and demand</h1>
+      <p class="lede">How national demand moves with temperature, and whether weather information
+      helps the forecast more when it is hot.</p>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>Association, not causation.</strong>
+      <span>These charts show that hot days and high demand occur together, and that temperature
+      forecasts improve the model. They do not establish that temperature <em>causes</em> a given
+      amount of demand. No causal identification strategy is used, and temperature is correlated
+      with season, working patterns and economic activity.</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Daily peak demand vs daily maximum forecast temperature</h2>
+        <p class="card-sub">Population-weighted national index across 18 load centres. Colour shows month.</p>
+      </div>
+      <div class="plot plot-tall" id="plotTempDemand"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Does weather help more when it is hot?</h2>
+        <p class="card-sub" id="hotDefinition"></p>
+      </div>
+      <div class="plot" id="plotHotSplit"></div>
+      <div class="table-wrap">
+        <table class="data-table" id="hotSensitivityTable">
+          <caption>Sensitivity: the same comparison at four hot-period thresholds</caption>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EVENING ============ -->
+  <section class="view" id="view-evening">
+    <div class="view-head">
+      <h1>Evening grid stress</h1>
+      <p class="lede">As solar output falls away through the evening, the rest of the fleet has to
+      pick up load quickly. This is where day-ahead accuracy matters most operationally.</p>
+    </div>
+
+    <div class="callout">
+      <strong>How residual load is defined here.</strong>
+      <span id="residualDefinition">Loading…</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>The average day</h2>
+        <p class="card-sub">Mean demand, solar, wind and residual load by hour, across the full dataset.</p>
+      </div>
+      <div class="plot plot-tall" id="plotDailyProfile"></div>
+    </div>
+
+    <div class="stat-grid" id="rampStats"></div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>When does the steepest ramp happen?</h2>
+        <p class="card-sub">Hour of the largest single-hour rise in residual load, counted over every full day.</p>
+      </div>
+      <div class="plot" id="plotEveningRamp"></div>
+    </div>
+  </section>
+
+  <!-- ============ PERFORMANCE ============ -->
+  <section class="view" id="view-performance">
+    <div class="view-head">
+      <h1>Model performance</h1>
+      <p class="lede" id="perfLede"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>All models on the held-out test period</h2>
+        <p class="card-sub">Lower MAE is better. Every row was scored by the same code on the same hours.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="modelTable"></table>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head"><h2>Error by hour of day</h2></div>
+        <div class="plot" id="plotErrorByHour"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Residuals</h2></div>
+        <div class="plot" id="plotResiduals"></div>
+      </div>
+    </div>
+
+    <div class="card" id="extrapolationCard">
+      <div class="card-head">
+        <h2>A negative result worth keeping</h2>
+      </div>
+      <div id="extrapolationBody"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Uncertainty band calibration</h2>
+        <p class="card-sub">Whether the P10–P90 band covers the actual value as often as it claims.</p>
+      </div>
+      <div class="plot" id="plotCalibration"></div>
+      <div id="calibrationNote"></div>
+    </div>
+  </section>
+
+  <!-- ============ EXPLAIN ============ -->
+  <section class="view" id="view-explain">
+    <div class="view-head">
+      <h1>What the model relies on</h1>
+      <p class="lede">Feature importance measures how much each input improved the model's training
+      objective — what it leans on, not what drives the grid.</p>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>What this cannot tell you.</strong>
+      <span id="explainCaveat">Loading…</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Feature importance (share of total split gain)</h2></div>
+      <div class="plot plot-tall" id="plotImportance"></div>
+    </div>
+  </section>
+
+  <!-- ============ METHODS ============ -->
+  <section class="view" id="view-methods">
+    <div class="view-head">
+      <h1>Data and methodology</h1>
+      <p class="lede">Where every number on this site comes from, and what it does not support.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Forecast task</h2></div>
+      <p id="methodConvention" class="prose"></p>
+      <div class="split-table" id="splitTable"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Data sources</h2></div>
+      <div id="sourceList"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Sensitivity checks</h2>
+        <p class="card-sub">Does the conclusion survive reasonable changes to the choices made?</p>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="weightingTable">
+          <caption>Weather aggregation weighting</caption>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="rollingTable">
+          <caption>Rolling-origin backtest: monthly refit, expanding window</caption>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Limitations</h2></div>
+      <ul class="limitations" id="limitationList"></ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Reproduce it</h2></div>
+      <pre class="code"><code>git clone https://github.com/dhairyabhosale/solaris
+cd solaris
+pip install -r requirements.txt
+
+python -m solaris.cli fetch-grid      # ~713 MB from Mendeley
+python -m solaris.cli fetch-weather   # archived forecasts, Open-Meteo
+python -m solaris.cli prepare         # parse, join, quality-check
+python -m solaris.cli train --rolling # fit and evaluate every model
+python -m solaris.cli report          # regenerate figures and tables
+
+uvicorn app.main:app --reload</code></pre>
+      <p class="prose">Every figure and table on this site is read from the files those commands
+      write. Nothing here is hand-entered.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <strong>Solaris Grid Intelligence</strong>
+      <p id="footerCoverage"></p>
+    </div>
+    <div class="footer-links">
+      <a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener">Grid-India data (Mendeley, CC BY 4.0)</a>
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather by Open-Meteo (CC BY 4.0)</a>
+      <a href="https://github.com/dhairyabhosale/solaris" target="_blank" rel="noopener">Source code</a>
     </div>
   </div>
+  <p class="footer-fine">Historical research dataset, not a live grid feed. Forecast results are
+  retrospective evaluations on held-out data and are not operational advice.</p>
+</footer>
 
-  <!-- ===================== Emergency SOS Modal ===================== -->
-  <div class="modal-overlay" id="sosModal">
-    <div class="modal-content" style="border-color: rgba(239, 68, 68, 0.6);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-        <h3 style="color:#ef4444; font-family:'Outfit', sans-serif; font-size:1.3rem; display:flex; align-items:center; gap:6px;">
-          <span>🚨</span> Emergency Heat Triage
-        </h3>
-        <button class="modal-close" id="btnCloseSos">✕</button>
-      </div>
-      <div style="font-size:0.86rem; color:var(--text-secondary); margin-bottom:1rem; line-height:1.5;">
-        If you or a coworker are experiencing severe dizziness, confusion, fainting, or have stopped sweating:
-      </div>
-      <div class="sos-steps">
-        <ol>
-          <li><strong>STOP WORK</strong> immediately and alert a coworker or supervisor.</li>
-          <li><strong>MOVE TO SHADE</strong> or an air-conditioned area.</li>
-          <li><strong>LOOSEN CLOTHING</strong>: remove hardhat, vest, heavy gear.</li>
-          <li><strong>COOL DOWN</strong>: apply cool water or wet cloths to neck, armpits, and groin.</li>
-          <li><strong>HYDRATE</strong>: sip cool water slowly — don't chug.</li>
-        </ol>
-      </div>
-      <div class="sos-disclaimer">
-        General workplace safety guidance only, not a medical diagnosis. Call emergency services immediately for unconsciousness or confusion.
-      </div>
-      <a class="btn-sos btn-sos-call" href="tel:112">📞 Call Emergency Dispatch (112)</a>
-    </div>
-  </div>
+<div class="toast" id="toast" role="alert" aria-live="assertive" hidden></div>
 
-  <script src="/app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

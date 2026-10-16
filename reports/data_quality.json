@@ -1,0 +1,286 @@
+{
+  "coverage": {
+    "first_hour_ist": "2021-09-01 00:00:00+05:30",
+    "last_hour_ist": "2023-12-31 23:00:00+05:30",
+    "hours_present": 20448,
+    "hours_expected": 20448,
+    "hours_missing": 0,
+    "pct_complete": 100.0,
+    "duplicate_timestamps": 0,
+    "longest_missing_run_hours": 0,
+    "missing_runs": 0
+  },
+  "target": {
+    "name": "demand_mw",
+    "unit": "MW",
+    "n_nan": 0,
+    "min": 0.0,
+    "p01": 119023.35947265624,
+    "median": 174596.54483506945,
+    "p99": 216707.71280512153,
+    "max": 239406.03059895834,
+    "n_below_plausible_min": 17,
+    "n_above_plausible_max": 0
+  },
+  "validity_flags": {
+    "n_demand_implausible": 17,
+    "n_hour_undersampled": 0,
+    "n_valid": 20431
+  },
+  "missingness_by_column": {
+    "thermal_mw": 0,
+    "hydro_mw": 0,
+    "gas_mw": 0,
+    "nuclear_mw": 0,
+    "wind_mw": 0,
+    "solar_raw_mw": 0,
+    "demand_mw": 0,
+    "solar_mw": 0,
+    "vre_mw": 0,
+    "generation_mw": 0,
+    "residual_load_mw": 0,
+    "temperature_2m_fc_pop": 43,
+    "temperature_2m_fc_equal": 43,
+    "temperature_2m_fc_region": 43,
+    "temperature_2m_obs": 0,
+    "relative_humidity_2m_obs": 0,
+    "dew_point_2m_obs": 0,
+    "apparent_temperature_obs": 0,
+    "shortwave_radiation_obs": 0,
+    "cloud_cover_obs": 0,
+    "wind_speed_10m_obs": 0,
+    "temperature_2m_fc_max": 43,
+    "temperature_2m_fc_spread": 43,
+    "temperature_2m_fc_region_NR": 43,
+    "temperature_2m_fc_region_WR": 43,
+    "temperature_2m_fc_region_SR": 43,
+    "temperature_2m_fc_region_ER": 43,
+    "temperature_2m_fc_region_NER": 43,
+    "city_temp_fc__Delhi": 43,
+    "city_temp_fc__Jaipur": 43,
+    "city_temp_fc__Lucknow": 43,
+    "city_temp_fc__Ludhiana": 43,
+    "city_temp_fc__Mumbai": 43,
+    "city_temp_fc__Ahmedabad": 43,
+    "city_temp_fc__Pune": 43,
+    "city_temp_fc__Surat": 43,
+    "city_temp_fc__Nagpur": 43,
+    "city_temp_fc__Indore": 43,
+    "city_temp_fc__Bengaluru": 43,
+    "city_temp_fc__Chennai": 43,
+    "city_temp_fc__Hyderabad": 43,
+    "city_temp_fc__Coimbatore": 43,
+    "city_temp_fc__Kolkata": 43,
+    "city_temp_fc__Patna": 43,
+    "city_temp_fc__Bhubaneswar": 43,
+    "city_temp_fc__Guwahati": 43,
+    "residual_ramp_mw_per_h": 1
+  },
+  "rows_per_month": {
+    "2021-09": 720,
+    "2021-10": 744,
+    "2021-11": 720,
+    "2021-12": 744,
+    "2022-01": 744,
+    "2022-02": 672,
+    "2022-03": 744,
+    "2022-04": 720,
+    "2022-05": 744,
+    "2022-06": 720,
+    "2022-07": 744,
+    "2022-08": 744,
+    "2022-09": 720,
+    "2022-10": 744,
+    "2022-11": 720,
+    "2022-12": 744,
+    "2023-01": 744,
+    "2023-02": 672,
+    "2023-03": 744,
+    "2023-04": 720,
+    "2023-05": 744,
+    "2023-06": 720,
+    "2023-07": 744,
+    "2023-08": 744,
+    "2023-09": 720,
+    "2023-10": 744,
+    "2023-11": 720,
+    "2023-12": 744
+  },
+  "source_sampling": {
+    "distinct_sample_periods_seconds": [
+      10.0,
+      300.0
+    ],
+    "per_workbook": [
+      {
+        "file": "September 2021.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8640,
+        "hours": 720
+      },
+      {
+        "file": "October 2021.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "November 2021.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8640,
+        "hours": 720
+      },
+      {
+        "file": "December 2021.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "January 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "February 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8064,
+        "hours": 672
+      },
+      {
+        "file": "March 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "April 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8640,
+        "hours": 720
+      },
+      {
+        "file": "May 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "June 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8640,
+        "hours": 720
+      },
+      {
+        "file": "July 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "August 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8928,
+        "hours": 744
+      },
+      {
+        "file": "September 2022.xlsx",
+        "sample_period_seconds": 300.0,
+        "raw_rows": 8640,
+        "hours": 720
+      },
+      {
+        "file": "October 2022.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "November 2022.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 259200,
+        "hours": 720
+      },
+      {
+        "file": "December 2022.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "January 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "February 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 241920,
+        "hours": 672
+      },
+      {
+        "file": "March 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "April 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 259200,
+        "hours": 720
+      },
+      {
+        "file": "May 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "June 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 259200,
+        "hours": 720
+      },
+      {
+        "file": "July 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "August 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "September 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 259200,
+        "hours": 720
+      },
+      {
+        "file": "October 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      },
+      {
+        "file": "Novemeber 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 259200,
+        "hours": 720
+      },
+      {
+        "file": "December 2023.xlsx",
+        "sample_period_seconds": 10.0,
+        "raw_rows": 267840,
+        "hours": 744
+      }
+    ],
+    "note": "The Mendeley dataset title claims a 1-hour interval. It is not hourly: the workbooks are 5-minute (r=300) for the earlier months and 10-second (r=10) for the later ones. This pipeline aggregates both regimes to true hourly means."
+  }
+}

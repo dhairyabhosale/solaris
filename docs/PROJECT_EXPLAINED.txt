@@ -1,0 +1,692 @@
+===============================================================================
+SOLARIS GRID INTELLIGENCE - PLAIN LANGUAGE GUIDE
+===============================================================================
+
+This file is for you, the project owner, to read before a viva, interview,
+presentation or resume discussion. It explains the whole project in simple
+English. Every number in it is real and comes from the actual evaluation run.
+
+Last updated after the evaluation run that produced reports/evaluation.json.
+
+
+===============================================================================
+1. WHAT PROBLEM DOES THIS SOLVE?
+===============================================================================
+
+Electricity cannot be stored cheaply at grid scale. Whatever India consumes at
+2pm has to be generated at 2pm. So grid operators must decide TODAY how much
+generation to line up for TOMORROW, hour by hour.
+
+If they plan too little, there are blackouts. If they plan too much, expensive
+plants run for nothing and money is wasted.
+
+Demand is not constant. It rises when it is hot, because hundreds of millions
+of fans and air conditioners switch on. It falls on holidays. It peaks in the
+evening when people get home and, at the same moment, solar generation drops
+to zero as the sun sets.
+
+So the question this project asks is:
+
+    "If we know what the weather forecast says for tomorrow, can we predict
+     tomorrow's electricity demand more accurately than if we ignore it?"
+
+And the follow-up:
+
+    "Does the weather help MORE on hot days, which is exactly when the grid
+     is under the most strain?"
+
+The answer to both is yes, and this project measures by how much.
+
+
+===============================================================================
+2. WHERE DOES THE DATA COME FROM?
+===============================================================================
+
+TWO SOURCES. Both free, both open, no API keys needed.
+
+(a) ELECTRICITY DATA - Grid-India
+
+    Grid-India is the government body that runs India's power grid. Their
+    North-Eastern Regional Load Despatch Centre published a dataset of actual
+    grid measurements on Mendeley Data (a research data repository) under a
+    CC BY 4.0 licence, which allows reuse with credit.
+
+    It covers 1 September 2021 to 31 December 2023 and contains, for the
+    whole of India: total electricity demand, and how much came from solar,
+    wind, thermal (coal), hydro, gas and nuclear.
+
+(b) WEATHER DATA - Open-Meteo
+
+    Open-Meteo is a free weather API. Crucially, it keeps an archive of OLD
+    FORECASTS - not just what the weather turned out to be, but what the
+    forecast SAID it would be, on the day before.
+
+    That distinction is the single most important idea in this project. More
+    on it in section 5.
+
+    I pulled weather for 18 major Indian cities spanning all five regional
+    grids: Delhi, Mumbai, Kolkata, Chennai, Bengaluru, Hyderabad, Ahmedabad,
+    Pune, Surat, Jaipur, Lucknow, Ludhiana, Nagpur, Indore, Coimbatore,
+    Patna, Bhubaneswar and Guwahati.
+
+WHAT ONE ROW OF MY FINAL DATASET MEANS
+
+    One row = one hour, in Indian Standard Time.
+
+    For example, the row for "2023-09-01 11:00 IST" says:
+      - India used 239,406 megawatts of electricity in that hour
+      - 41,476 MW of it came from solar, 2,571 MW from wind
+      - the population-weighted temperature forecast for that hour was X °C
+      - it was a Friday, not a holiday
+
+    There are 20,448 such rows. That is 2 years and 4 months of hours, with
+    no gaps at all.
+
+SOMETHING I FOUND BY ACTUALLY OPENING THE FILES
+
+    The dataset's title says the data is "at 1-hour interval". That is wrong.
+
+    When I opened the files, each one had a hidden settings sheet recording
+    the real sampling rate. The early files sample every 5 MINUTES. The files
+    from October 2022 onwards sample every 10 SECONDS - which is why a single
+    month's file is 48 MB with 267,840 rows.
+
+    So I wrote code that reads that hidden setting, records it, and averages
+    everything properly up to one hour. I also found three columns that are
+    actually Excel FORMULAS, not numbers, so I recompute those myself from
+    the raw measurements rather than trusting them.
+
+    This matters if someone asks "did you just download a CSV?". No - I
+    verified the data and found the published description was inaccurate.
+
+
+===============================================================================
+3. WHAT DOES THE CLEANING AND FEATURE ENGINEERING DO?
+===============================================================================
+
+CLEANING - three real problems I had to fix:
+
+  1. Negative solar at night. The solar sensor reads about -20 MW at
+     midnight. The sun is not producing negative electricity; it is a sensor
+     calibration offset. I clip it to zero, and keep the original column too
+     so anyone can check what I did.
+
+  2. Sensor blackouts. 17 hours out of 20,448 show impossible values - 12 of
+     them read exactly 0 MW for the entire country, which obviously did not
+     happen. These are SCADA dropouts. I flag them and exclude them from
+     modelling, rather than quietly deleting them. That is 0.08% of the data.
+
+  3. Timezone. The raw timestamps have no timezone attached. Grid-India runs
+     on Indian Standard Time, and India has no daylight saving, so I attach
+     IST directly. No ambiguity is possible.
+
+FEATURE ENGINEERING - turning raw data into things a model can learn from
+
+  "Features" are just the input columns I give the model. I build 37 of them
+  in three groups.
+
+  CALENDAR features - what day and hour is it?
+     Hour of day, day of week, weekend or not, month, national holiday or
+     not. I also encode hour as a sine and cosine pair, so the model knows
+     that 11pm and midnight are next to each other rather than 23 units
+     apart.
+
+  HISTORY features - what has demand been doing recently?
+     Demand at this same hour yesterday. And last week. The average for this
+     hour over the past 7 days, and how much it has been bouncing around.
+     Yesterday's daily average and daily peak.
+
+  WEATHER features - what is the forecast saying?
+     The forecast temperature, of course. But also:
+
+       "Cooling degree hours": how far above 24 °C it is. Why? Because the
+       relationship is not a straight line. Going from 10 °C to 15 °C changes
+       electricity demand barely at all. Going from 35 °C to 40 °C changes it
+       enormously, because that is when everyone turns the AC up. This
+       feature lets the model capture that bend.
+
+       "Three-day heat accumulation": how hot it has been over the last three
+       days. Why? Because buildings store heat. The third hot day in a row
+       uses more electricity than the first hot day, even at the same
+       temperature, because the concrete never cooled down overnight.
+
+       "Daily temperature range": a day that peaks at 40 °C but cools to 22 °C
+       at night is easier on the grid than one that peaks at 40 °C and only
+       falls to 32 °C.
+
+       Per-region temperatures for all five regional grids, because a hot
+       north with a mild south is a different situation from uniform warmth.
+
+
+===============================================================================
+4. WHAT DOES THE MODEL PREDICT - AND WHAT DOES IT *NOT* MEAN?
+===============================================================================
+
+WHAT IT PREDICTS
+
+  For each of the 24 hours of tomorrow, it predicts how many megawatts India
+  will consume in that hour.
+
+  It is a "day-ahead" forecast. The rule I set is: pretend it is 9am today,
+  and predict every hour of tomorrow using only information that genuinely
+  existed at 9am today.
+
+WHAT IT DOES *NOT* MEAN
+
+  - It does NOT mean temperature CAUSES a specific amount of demand. It
+    means temperature forecasts carry useful INFORMATION about demand. Hot
+    weather also coincides with summer, with different working patterns, with
+    agricultural irrigation seasons. I have not separated those out, and I
+    say so everywhere.
+
+  - It is NOT an operational tool. I evaluated it on 2023 data. It has never
+    been tested in real grid operations and nobody should despatch a power
+    plant on it.
+
+  - It does NOT predict 2024, 2025 or 2026. My data stops on 31 December
+    2023. I make no claim about recent demand records.
+
+  - The uncertainty band is NOT reliable. I'll come back to this honestly in
+    section 7, because it is a real weakness and interviewers respect you
+    knowing your own weaknesses.
+
+
+===============================================================================
+5. THE MOST IMPORTANT IDEA: NOT CHEATING (DATA LEAKAGE)
+===============================================================================
+
+If you remember one thing for your viva, remember this section.
+
+"Data leakage" means accidentally giving your model information it could not
+possibly have had at prediction time. It makes your results look brilliant
+and makes them worthless.
+
+THE TRAP MOST PEOPLE FALL INTO
+
+  You want to predict tomorrow's demand using tomorrow's temperature. So you
+  download historical weather and feed in the temperature that was actually
+  recorded tomorrow.
+
+  But a real forecaster does not know tomorrow's actual temperature. They
+  only have tomorrow's FORECAST, which is wrong by a degree or two.
+
+  If you train on actual temperature, your model looks great in testing and
+  falls apart in reality, because in reality that column will never be
+  available.
+
+WHAT I DID INSTEAD
+
+  Open-Meteo has a "Previous Runs" API that stores old forecasts. I can ask
+  it: "On 14 May 2022, what did you predict for 3pm on 15 May 2022?"
+
+  That is the number a real forecaster would have had. That is what I use.
+
+  I checked that they genuinely differ. For Delhi on 15 May 2022, the
+  day-ahead forecast for the afternoon said 45.4, 46.3, 46.7, 46.9 °C. The
+  actual recorded values were 44.6, 44.9, 45.2, 45.4 °C. So the forecast ran
+  about 1.5 °C too warm - a real forecast with real error, not a relabelled
+  observation.
+
+THREE MORE LEAKAGE RULES I ENFORCE IN CODE
+
+  1. No demand lag shorter than 24 hours. If it is 9am today and I am
+     predicting 11pm tomorrow, I do not know what demand was at 10pm
+     tomorrow. So the shortest history I allow is "same hour yesterday".
+
+  2. No same-hour grid measurements. I know how much solar India generated at
+     2pm yesterday, but I do not know how much it will generate at 2pm
+     tomorrow. So solar, wind and generation at the target hour are banned as
+     inputs. I only use them to DESCRIBE what happened, never to predict.
+
+  3. No random train/test splitting. With time series you must split by time.
+     If you shuffle randomly, you train on December and test on November -
+     your model has literally seen the future.
+
+  I wrote a function called assert_no_leakage() that enforces all of this and
+  throws an error if any banned column sneaks in. There are tests for it.
+
+  There is also a clever test I am proud of: it recomputes every history
+  feature on a truncated copy of the data, and checks the values are
+  identical. If any feature were secretly peeking at the future, cutting the
+  future off would change it. It does not.
+
+
+===============================================================================
+6. WHAT IS A BASELINE, AND WHY DOES COMPARING MATTER?
+===============================================================================
+
+A baseline is the dumbest sensible method. If your fancy model cannot beat
+it, your fancy model is pointless.
+
+MY MAIN BASELINE: "same hour yesterday"
+
+  To predict 3pm tomorrow, just say "whatever it was at 3pm today."
+
+  That sounds stupid. It is not. Electricity demand is very smooth and very
+  habitual. This baseline gets a mean error of 4,938 MW - about 2.7% off.
+  Lots of published forecasting work fails to beat this.
+
+MY OTHER BASELINES
+
+  - Same hour LAST WEEK: much worse (9,807 MW). Weather changes in a week.
+  - Hour-and-weekday average: terrible (22,386 MW). It ignores the fact that
+    India's demand grew substantially over the period.
+  - Ridge regression on calendar and history: 4,662 MW. A respectable linear
+    model.
+
+WHY I HAVE SO MANY
+
+  Because the honest question is not "is my model good?" but "is my model
+  better than the obvious alternatives, and by how much?"
+
+  My best model gets 3,398 MW - 31.2% better than the naive baseline.
+
+
+===============================================================================
+7. WHAT DO THE EVALUATION METRICS MEAN IN PLAIN ENGLISH?
+===============================================================================
+
+MAE (Mean Absolute Error) = 3,398 MW
+    On average, my forecast is wrong by about 3,400 megawatts in either
+    direction. India's demand averages around 185,000 MW, so that is small.
+    "Absolute" means I ignore the direction of the error, so over- and
+    under-predictions do not cancel out.
+
+MAPE (Mean Absolute Percentage Error) = 1.87%
+    The same thing as a percentage. My forecast is typically within about
+    1.9% of the true value. This is the number to quote if someone wants one
+    figure, because it does not need context about India's grid size.
+
+RMSE (Root Mean Squared Error) = 4,565 MW
+    Like MAE, but it squares the errors first, which punishes big mistakes
+    much more harshly. RMSE is always bigger than MAE. If RMSE is MUCH bigger
+    than MAE, you have some very large occasional errors. Mine is 4,565 vs
+    3,398 - a normal ratio, so no catastrophic outliers.
+
+BIAS = -615 MW
+    The average error WITH direction. Negative means I systematically
+    under-predict slightly. Worth knowing: a grid operator would rather you
+    erred high.
+
+R-squared = 0.945
+    The fraction of the variation in demand my model explains. 1.0 would be
+    perfect, 0 would be no better than always guessing the average. 0.945 is
+    strong.
+
+PEAK MAE = 3,281 MW, PEAK HOUR MAE = 1.63 hours
+    How wrong I am about the highest demand hour of each day, and about WHEN
+    it happens. I get the peak hour exactly right on 50.7% of days and within
+    one hour on 77.0%.
+
+p-VALUE = 0.00000000032
+    From a paired statistical test. It answers: "could this improvement be
+    luck?" A p-value this tiny means essentially no - the chance of seeing an
+    improvement this consistent by luck is about 3 in 10 billion. I ran the
+    test on DAILY errors rather than hourly, because hourly errors are
+    correlated with each other and would overstate my confidence.
+
+
+===============================================================================
+8. WHAT ARE THE ACTUAL RESULTS?
+===============================================================================
+
+TEST PERIOD: 1 March 2023 to 31 December 2023 (7,344 hours).
+These hours were never used for training, tuning, or anything else.
+
+MAIN RESULT
+
+    Naive baseline (same hour yesterday)    4,938 MW
+    My model WITHOUT weather                3,822 MW
+    My model WITH weather                   3,398 MW   <-- best
+
+    Weather improves the forecast by 11.07%.
+    The best model is 31.2% better than the naive baseline.
+
+THE HEADLINE FINDING - WEATHER HELPS MOST WHEN IT MATTERS MOST
+
+    On research-defined hot hours:   21.45% improvement from weather
+    On all other hours:               9.32% improvement from weather
+
+    That is the finding worth leading with. Weather information is more than
+    twice as valuable during hot periods - exactly when the grid is most
+    stressed and a forecast error is most expensive.
+
+    And it is not an artefact of where I drew the "hot" line. I tested four
+    thresholds: the improvement was 15.7%, 18.8%, 21.5% and 22.6%.
+
+IS IT JUST LUCK? NO
+
+    p = 0.00000000032 on a paired test over 305 days.
+    65.6% of individual days improved.
+    I also refitted the model fresh every month for 12 months (a "rolling
+    backtest") and weather helped in 9 of those 12 months.
+
+EVENING GRID STRESS
+
+    Looking at "residual load" - demand minus solar and wind, which is what
+    conventional plants must cover:
+
+      - The steepest hour-to-hour climb averages 12.4 GW per hour
+      - One day in twenty it exceeds 17.8 GW per hour
+      - Over three hours it averages 26.2 GW
+      - It most often peaks at 19:00 IST
+
+    To picture 12.4 GW/h: that is like switching on roughly a dozen large
+    power stations within a single hour, every single evening, because the
+    sun went down while everyone got home.
+
+THE NEGATIVE RESULT I KEPT
+
+    Two of my models are WORSE than the naive baseline, and I report them
+    anyway because the reason is genuinely interesting.
+
+    A decision-tree model can only ever output an average of values it saw
+    during training. It literally cannot predict a number higher than its
+    training maximum.
+
+    India's demand grew a lot. My training data maxes out at 209.8 GW. But
+    the test period reaches 239.4 GW, and 526 test hours are above anything
+    the model ever saw. So that model hits a ceiling at 204.7 GW and just
+    stops.
+
+    THE FIX: instead of predicting "tomorrow's demand will be 220 GW", I
+    predict "tomorrow will be 3 GW higher than today was", then add today's
+    actual value. That number - the CHANGE - is stable over time even though
+    the LEVEL keeps growing. Now the ceiling is gone: the fixed model reaches
+    237.2 GW.
+
+    This is a great thing to be asked about. It shows you understand what
+    your algorithm actually does rather than treating it as a black box.
+
+
+===============================================================================
+9. WHAT IS FEATURE IMPORTANCE / SHAP, AND WHAT DOES IT NOT PROVE?
+===============================================================================
+
+WHAT IT IS
+
+  The model makes thousands of yes/no splits ("is the temperature above
+  31 °C?"). Feature importance adds up how much each input improved the
+  model's accuracy across all those splits. It tells you what the model
+  leans on.
+
+MY TOP FEATURES
+
+    demand_lag_24h               36%   (demand at this hour yesterday)
+    dayofweek                    12%
+    demand_same_hour_std_7d       8%   (how volatile this hour has been)
+    hour                          8%
+    demand_trend_1d_7d            7%   (yesterday vs last week)
+    temp_fc_anomaly_vs_prev_day   4%   (how much warmer than yesterday)
+
+  Yesterday's demand dominates, which makes complete sense for a 24-hour
+  forecast. The most useful WEATHER feature is not raw temperature but the
+  CHANGE in temperature from yesterday - which fits perfectly, because my
+  model is predicting the change in demand from yesterday.
+
+WHAT IT DOES *NOT* PROVE
+
+  - It does not prove causation. It shows statistical usefulness to this
+    particular model, nothing more.
+  - When two inputs are correlated (temperature and cooling degree hours very
+    much are), they split the credit arbitrarily. A low score can mean "not
+    useful" OR "useful but another column already covers it".
+  - A different model trained on the same data could rank them differently.
+
+  If asked "so temperature causes 4% of demand?" - no. Say: "It means the
+  temperature-change feature contributed about 4% of the model's total
+  predictive gain. Establishing causation would need a completely different
+  study design."
+
+
+===============================================================================
+10. HOW DOES THE DASHBOARD WORK, AND HOW DO I DEMO IT?
+===============================================================================
+
+HOW IT WORKS
+
+  It is a FastAPI backend serving a web page. The important design decision:
+  the web app does NO modelling. It only reads the files the research
+  pipeline already wrote. So the dashboard physically cannot show a number
+  that the evaluation code did not produce.
+
+  It needs no API keys and calls no external AI service.
+
+TO RUN IT
+
+    uvicorn app.main:app --reload
+
+  Then open http://127.0.0.1:8000
+
+THE 90-SECOND DEMO - do it in this order
+
+  1. OVERVIEW. Point at the four KPI cards. Say: "3,398 MW average error,
+     1.87%, on ten months of data the model never saw." Point at the banner
+     at the top: "note it says clearly this is historical data, not live - I
+     did not want a fake live dashboard."
+
+  2. HEAT & DEMAND. This is your strongest page. Show the scatter plot of
+     daily peak demand against temperature. Then scroll to the bar chart:
+     "Here is the key result - weather cuts the error 21% on hot days versus
+     9% on normal days." Then point at the sensitivity table underneath: "and
+     I checked that holds at four different definitions of 'hot'."
+
+  3. EVENING STRESS. Show the average-day chart. Trace the solar curve
+     collapsing after 5pm while demand stays high. "That gap is what
+     conventional plants have to fill - 12.4 GW within a single hour."
+
+  4. PERFORMANCE. Scroll to "A negative result worth keeping". Explain the
+     ceiling problem in one sentence. This is the part that makes you look
+     like a scientist instead of someone who ran model.fit().
+
+  5. Scroll one more to the red calibration warning. "My uncertainty band
+     does not work properly and here is the diagnosis." Volunteering your own
+     weakness before they find it is extremely strong.
+
+  6. FORECAST tab, if there is time. Click "Jump to peak-demand day" to land
+     on 1 September 2023 - India's all-time record demand hour.
+
+
+===============================================================================
+11. HOW DO I RUN AND REPRODUCE EVERYTHING?
+===============================================================================
+
+    pip install -r requirements-research.txt    # full pipeline
+    # (requirements.txt is the small web-app-only set, see note below)
+
+    python -m solaris.cli fetch-grid       # downloads 713 MB, slow
+    python -m solaris.cli fetch-weather    # weather for 18 cities
+    python -m solaris.cli prepare          # clean and join, ~8 minutes
+    python -m solaris.cli train --rolling  # fit and score everything
+    python -m solaris.cli report           # rebuild charts and tables
+
+    pytest                                 # 108 tests, all offline
+    uvicorn app.main:app --reload          # launch dashboard
+
+A NOTE ON THE TWO REQUIREMENTS FILES
+
+  requirements-research.txt  - everything: pandas, LightGBM, SHAP, SciPy...
+  requirements.txt           - just four packages, for the dashboard only
+
+  Why split them? The dashboard doesn't do any modelling. It reads a small
+  JSON file that the pipeline already wrote, using Python's built-in library.
+  So the deployed website doesn't need LightGBM or pandas at all - which takes
+  the deployment from about 250 MB down to 35 MB and makes it start instantly.
+
+  If an interviewer asks about deployment, that's a good detail to mention:
+  separating the research stack from the serving stack is normal practice in
+  production ML, and here it is enforced by a test that fails if the web code
+  ever imports pandas.
+
+Everything the project claims lives in reports/evaluation.json, written by
+the training command. The README, the docs, the charts and the dashboard all
+read from it. Nothing is typed in by hand. If you re-ran the pipeline and the
+numbers changed, every one of those would change with it.
+
+
+===============================================================================
+12. THE 30-SECOND EXPLANATION
+===============================================================================
+
+"India's grid operators have to decide today how much electricity to generate
+tomorrow, hour by hour. I built a machine learning system that forecasts
+tomorrow's national demand using the weather forecast - and critically, using
+the forecast as it existed yesterday, not the weather that actually happened,
+because that is all a real forecaster would have.
+
+On ten months of held-out data it averages 1.87% error, which is 31% better
+than the standard industry baseline. The interesting finding is that weather
+information helps more than twice as much during hot periods - 21% versus 9% -
+which is exactly when the grid is under most strain."
+
+
+===============================================================================
+13. THE 2-MINUTE EXPLANATION
+===============================================================================
+
+"Electricity can't be stored at grid scale, so supply has to match demand
+every single hour. India's grid operators commit generation a day in advance,
+and demand swings hugely with temperature because of air conditioning load.
+
+So I asked: does knowing tomorrow's weather forecast actually make day-ahead
+demand forecasts better, and does it help more when it's hot?
+
+For data I used Grid-India's SCADA measurements - actual national demand and
+generation - published through Mendeley under CC BY. Two and a bit years,
+20,448 hours. Worth mentioning: the dataset is titled 'hourly' but when I
+opened the files it's actually 5-minute and 10-second SCADA exports, so I
+wrote the aggregation myself and documented the discrepancy.
+
+For weather, the key methodological point. Most projects would use the
+temperature that was actually recorded. That's data leakage - a real
+forecaster doesn't know tomorrow's temperature, only tomorrow's forecast. So I
+used Open-Meteo's archive of old forecast runs, which gives me exactly what a
+forecaster would have had the previous day. I also enforce it in code: there's
+a leakage-guard function that rejects observed weather, same-hour grid
+measurements, and any demand lag under 24 hours.
+
+I split chronologically - train on 2021-22, validate on early 2023, test on
+March to December 2023. I deliberately placed the test block to include a hot
+season, because an earlier split I tried had zero hot hours in the test
+period, which would have made the central question unanswerable.
+
+Then I compared everything against baselines. The naive 'same hour yesterday'
+baseline gets 4,938 MW error. My model without weather gets 3,822. With
+weather, 3,398 - an 11% improvement, p-value around 3 times 10 to the minus
+10, confirmed across a 12-fold rolling backtest.
+
+The headline finding is the hot-period split: 21.5% improvement on hot hours
+versus 9.3% otherwise, robust across four different thresholds.
+
+I also kept a negative result. My first tree models lost to the baseline,
+because a gradient-boosted tree can't predict above its training maximum and
+Indian demand grew past it - 526 test hours were above anything it had seen.
+I fixed it by predicting the day-on-day change rather than the level, but I
+report both, because the failure explains why the fix was necessary."
+
+
+===============================================================================
+14. LIKELY INTERVIEW QUESTIONS, WITH HONEST ANSWERS
+===============================================================================
+
+Q: Why LightGBM and not deep learning?
+A: Twenty thousand rows is small for a neural network - it would overfit the
+   calendar. Gradient boosting is the standard strong choice for tabular data
+   this size and it trains in seconds, so I could run proper sensitivity
+   analyses and a 12-fold backtest. I'd consider an LSTM with several more
+   years of data. Adding deep learning just to list it would have been worse
+   engineering, not better.
+
+Q: Only 11% improvement from weather - isn't that small?
+A: Two things. First, it's measured against a strong baseline that already
+   has demand history, which carries a lot of weather signal implicitly -
+   yesterday's demand already encodes yesterday's weather. Second, 11% is the
+   average; on hot hours it's 21.5%, and that's where it matters. It's also
+   almost certainly a lower bound, because only temperature was available at
+   a true day-ahead lead - no humidity, which matters a lot for Indian
+   cooling load.
+
+Q: Why is your test period longer than your training period?
+A: A deliberate trade-off. India's hot season is March to June. My first split
+   trained through April 2023 and tested July to December, and the test block
+   had literally zero hot hours - which made the main research question
+   unanswerable. So I moved the boundary. Sixteen months of training still
+   covers a complete annual cycle, and the rolling backtest is the check that
+   the single split isn't a fluke.
+
+Q: How do you know you don't have data leakage?
+A: Three ways. There's a guard function that rejects observed weather,
+   same-hour grid measurements and demand lags under 24 hours, and it's
+   tested. There's a test that recomputes every history feature on truncated
+   data and asserts nothing changes - if anything peeked forward, that test
+   would fail. And the weather inputs come from an archived-forecast API, not
+   a historical-weather API, which I verified by checking that the forecast
+   and the observation genuinely differ.
+
+Q: Your uncertainty band doesn't work. Why ship it?
+A: Because I'd rather report a measured failure than hide it. The P10-P90
+   band covers 57.5% of actuals against a nominal 80%. I diagnosed why: on
+   the validation block, where it was tuned, it covers 72%, so it's roughly
+   right there and too narrow out of sample. The validation block is January
+   and February, with a mean daily demand range of 58.9 GW versus 34.7 GW on
+   test. That's distribution shift. The fix would be recalibrating on a window
+   that spans a hot season. I labelled it as not fit for use as a risk band.
+
+Q: Is this good enough for a real grid operator?
+A: No, and I say so in the model card. It's evaluated on historical data,
+   never tested in live operations, and it slightly under-predicts peaks,
+   which is the wrong direction for an operator. It's a research artefact
+   demonstrating the method, not a product.
+
+Q: Did temperature cause the demand increase?
+A: I can't say that and I don't. I've shown predictive association:
+   temperature forecasts carry information that improves demand prediction.
+   Temperature is confounded with season, working patterns, agricultural
+   irrigation and economic activity, and I have no identification strategy to
+   separate those. Causal estimation would be a different study.
+
+Q: Why population weights for the weather index?
+A: Because I couldn't obtain actual regional demand weights in a reproducible
+   machine-readable form from Grid-India or CEA, and I wasn't willing to make
+   numbers up. Population is a transparent, citable proxy - Census 2011 urban
+   agglomerations. It understates industrial and agricultural load, which is a
+   real weakness. I mitigated it by re-running everything under three
+   weighting schemes; weather wins under all three, at 11.1%, 10.5% and 7.3%.
+   So the conclusion is robust but the magnitude does depend on the choice.
+
+Q: What would you do next?
+A: Three things, in order. Find a humidity forecast at a genuine day-ahead
+   lead, because wet-bulb temperature likely matters more than dry-bulb for
+   Indian cooling load. Recalibrate the quantiles properly, probably with
+   conformal prediction on a rolling window. And extend past 2023 to test
+   whether the relationship is stable as rooftop solar grows, since
+   behind-the-meter solar is invisible in this data and is changing the shape
+   of the evening ramp.
+
+Q: What was the hardest part?
+A: Realising my first results were wrong for a structural reason. The tree
+   models were losing to a naive baseline and my instinct was to tune
+   hyperparameters. The actual cause was that gradient-boosted trees can't
+   extrapolate, and Indian demand had grown past the training range. No
+   amount of tuning fixes that - it needed a change in what the model
+   predicts. That taught me to diagnose before I tune.
+
+
+===============================================================================
+15. NUMBERS TO MEMORISE
+===============================================================================
+
+    Data:           20,448 hours, Sep 2021 - Dec 2023, 100% complete
+    Test period:    1 Mar - 31 Dec 2023, 7,344 hours
+    Best MAE:       3,398 MW  (1.87% MAPE)
+    Naive baseline: 4,938 MW  -> I'm 31.2% better
+    Without weather:3,822 MW  -> weather adds 11.07%
+    Hot hours:      21.45% improvement from weather
+    Other hours:     9.32% improvement from weather
+    p-value:        3.2 x 10^-10
+    Peak error:     3,281 MW (1.65%); right hour within 1h on 77% of days
+    Evening ramp:   12.4 GW/h average steepest hour, peaks around 19:00 IST
+    Record hour:    239,406 MW on 1 Sep 2023, 11:00 IST
+    Tests:          108, all passing, all offline
+
+===============================================================================

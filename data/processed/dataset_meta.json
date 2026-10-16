@@ -1,0 +1,11 @@
+{
+  "rows": 20448,
+  "start": "2021-09-01 00:00:00+05:30",
+  "end": "2023-12-31 23:00:00+05:30",
+  "timezone": "Asia/Kolkata",
+  "target": "demand_mw",
+  "target_unit": "MW",
+  "hot_period_threshold_c": 37.667950387014805,
+  "hot_period_percentile": 0.9,
+  "hot_period_definition": "Research-defined: population-weighted national daily maximum day-ahead forecast temperature >= 37.67 C (the p90% of daily maxima over the training period). NOT an India Meteorological Department heatwave declaration."
+}

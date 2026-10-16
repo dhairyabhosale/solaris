@@ -1,158 +1,374 @@
-# Solaris — Heat Safety Companion
+# Solaris Grid Intelligence
 
-A conversational AI assistant that helps outdoor/gig workers — construction
-workers, specifically — manage heat risk during their shift. Built overnight
-for **ForgeAI** at VIT Gravitas '26.
+**Heat-aware electricity demand forecasting and evening grid stress analysis for India**
 
-## What it does
+> **Can weather-aware machine learning improve day-ahead electricity-demand
+> forecasts in India, particularly during hot periods and the evening
+> transition when solar generation declines?**
 
-1. **Onboarding (one-time).** A worker tells Solaris their work type,
-   typical shift hours, and location.
-2. **Daily check-in.** The worker messages the bot. Solaris fetches today's
-   real weather (temperature, humidity) for their location, reasons over
-   that plus their profile, and returns a risk level (low / moderate / high
-   / extreme), a break-and-hydration schedule tuned to today's severity and
-   their work type, and a clear escalation warning on dangerous days.
-3. **Follow-up conversation.** The worker can ask follow-up questions
-   ("I can't take a break right now, what's the minimum?") and Solaris
-   answers using today's actual severity and the specific question, not
-   generic advice.
-4. **Symptom escalation.** If the worker describes heat-illness symptoms
-   (dizziness, confusion, not sweating, etc.), Solaris gives clear, basic
-   first-aid guidance — stop working, find shade, hydrate, seek help if
-   severe. General safety information only, not a medical diagnosis.
+Short answer, measured on ten months of held-out data: **yes — by 11.1% in
+mean absolute error, and by 21.5% during hot periods.**
+
+---
+
+## What this is
+
+A reproducible data-science project that forecasts all-India hourly
+electricity demand one day ahead, using **archived weather forecasts** rather
+than observed weather, and evaluates the result honestly against baselines
+that are hard to beat.
+
+Everything it reports comes from `reports/evaluation.json`, which is written
+by the evaluation code. No metric anywhere in this repository — README,
+dashboard, docs — is hand-entered.
+
+| | |
+| --- | --- |
+| **Target** | All-India metered demand (`NLDC_DEMAND\|P`), hourly mean, MW |
+| **Data** | 2021-09-01 → 2023-12-31 IST, 20,448 hours, 100% complete |
+| **Test period** | 2023-03-01 → 2023-12-31 (7,344 hours), never used for fitting |
+| **Headline model** | LightGBM on calendar + demand history + day-ahead forecast temperature |
+| **Headline MAE** | **3,398 MW (1.87% MAPE)** |
+
+---
+
+## Results
+
+Held-out test period, 2023-03-01 to 2023-12-31. Lower MAE is better.
+
+| Model | MAE (MW) | RMSE (MW) | MAPE (%) | vs naive-24h |
+| --- | ---: | ---: | ---: | ---: |
+| **`lgbm_weather`** | **3,398** | **4,565** | **1.87** | **+31.2%** |
+| `lgbm_calendar_history` | 3,822 | 5,067 | 2.09 | +22.6% |
+| `ridge_calendar_history` | 4,662 | 6,114 | 2.58 | +5.6% |
+| `naive_lag_24h` | 4,938 | 6,691 | 2.72 | — |
+| `lgbm_calendar_history_level` | 5,443 | 7,524 | 2.89 | −10.2% |
+| `lgbm_weather_level` | 5,528 | 7,799 | 2.90 | −11.9% |
+| `naive_lag_168h` | 9,807 | 12,346 | 5.43 | −98.6% |
+| `climatology_hour_weekday` | 22,386 | 26,167 | 11.71 | −353.3% |
+
+### Does weather actually add information?
+
+`lgbm_weather` and `lgbm_calendar_history` are the same algorithm, the same
+hyperparameters and the same target. Only the feature set differs.
+
+- **MAE 3,822 → 3,398 MW, an 11.07% reduction**
+- Paired t-test on daily error: **p = 3.2 × 10⁻¹⁰** over 305 days; Wilcoxon
+  p = 1.5 × 10⁻¹⁰; **65.6% of days improved**
+- Confirmed by a 12-fold rolling-origin backtest (monthly refit, expanding
+  window): mean fold MAE 3,227 MW with weather against 3,731 MW without,
+  improving in **9 of 12 folds**
+
+### It helps most when it is hot
+
+| Slice | MAE reduction from weather |
+| --- | ---: |
+| Research-defined hot hours | **21.45%** |
+| All other hours | 9.32% |
+| Evening window (17:00–22:00 IST) | 12.43% |
+| Top decile of demand hours | 16.80% |
+
+Robust to where the hot threshold is drawn: 15.7% / 18.8% / 21.5% / 22.6% at
+the p80 / p85 / p90 / p95 thresholds.
+
+### Daily peak
+
+3,281 MW peak MAE (1.65% of peak). The peak hour is called exactly right on
+50.7% of days and within ±1 hour on 77.0%.
+
+### Evening grid stress
+
+Measured over 845 full days, on research residual load (demand minus SCADA
+solar and wind):
+
+- Mean steepest hourly ramp **12.4 GW/h**; 95th percentile **17.8 GW/h**
+- Mean steepest 3-hour ramp **26.2 GW**
+- The steepest ramp most often falls at **19:00 IST**; the evening residual
+  peak most often at **18:00 IST**
+
+### A negative result that is kept, not hidden
+
+The two `_level` models are **worse than reusing yesterday's demand**. A
+gradient-boosted tree cannot predict above its training maximum. Training tops
+out at 209.8 GW; the test block reaches 239.4 GW, with **526 test hours above
+anything a level model ever saw**, so it saturates at 204.7 GW.
+
+The headline models predict the *change* from the same hour yesterday and add
+that anchor back, lifting the ceiling to 237.2 GW. Both variants are reported,
+because the failure explains why the fix is needed.
+
+---
+
+## How leakage is prevented
+
+A day-ahead forecast is only meaningful if it uses only what was knowable when
+it was issued. The convention here: **every hour of day D is predicted from
+information available at 09:00 IST on day D−1.**
+
+- **Weather comes from archived forecasts, never observations.** Open-Meteo's
+  Previous Runs API returns the value a timestamp was given by the model run
+  issued a day earlier. Observed weather is downloaded too, but every such
+  column carries an `_obs` suffix and `assert_no_leakage` raises on it.
+- **No demand lag shorter than 24 hours.** At 09:00 on D−1 you do not know
+  demand at hour *t−1* of day D. Rolling statistics are shifted before
+  windowing; daily aggregates are shifted in whole days.
+- **No contemporaneous grid measurements.** Solar, wind, generation and
+  residual load at the target hour are rejected by name.
+- **Preprocessing fitted on training rows only** — scalers, and the
+  hot-period temperature threshold.
+- **Chronological splits only.** No random splitting anywhere.
+
+`solaris.features.assert_no_leakage` encodes these rules and the test suite
+exercises each, including a test that recomputes every history feature on
+truncated data and asserts nothing changed.
+
+---
+
+## Data sources
+
+| Source | Use | Licence |
+| --- | --- | --- |
+| [Grid-India / NERLDC SCADA via Mendeley Data](https://data.mendeley.com/datasets/y58jknpgs8) (doi:[10.17632/y58jknpgs8.1](https://doi.org/10.17632/y58jknpgs8.1)) | Demand, solar, wind, thermal, hydro, gas, nuclear | CC BY 4.0 |
+| [Open-Meteo Previous Runs API](https://open-meteo.com/en/docs/previous-runs-api) | Archived **day-ahead forecast** temperature — the model's only weather input | CC BY 4.0 |
+| [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) | Observed weather, **retrospective analysis only** | CC BY 4.0 |
+
+### Two things worth knowing about the data
+
+**The Mendeley dataset is not hourly, despite its title.** It is published as
+"at 1-hour interval". The files are 5-minute exports up to September 2022 and
+**10-second** exports from October 2022, which the hidden `_osi_config` sheet
+records as `"r":300.0` and `"r":10.0`. This project reads that field and
+aggregates both regimes to true hourly means. Three of the workbook columns
+are Excel formulas rather than data and are recomputed from the raw SCADA
+points instead of trusted.
+
+**Only temperature is archived at a day-ahead lead.** Humidity, dew point,
+radiation, cloud cover and wind all return empty series from the Previous Runs
+API for 2021–2023. They are therefore excluded from the model rather than
+replaced with observed values. The measured 11.07% gain is likely a *lower
+bound* on what weather information could contribute.
+
+Full provenance, licences, verified discrepancies and the peak cross-check
+against official reporting: **[`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)**.
+
+---
 
 ## Architecture
 
 ```
-app/
-├── main.py                 FastAPI app, mounts routers
-├── config.py                env-based settings
-├── models.py                  Pydantic request/response/profile schemas
-├── routes/
-│   ├── onboarding.py           POST /onboarding
-│   └── chat.py                  POST /chat
-└── services/
-    ├── weather.py                Open-Meteo geocoding + current weather
-    ├── llm.py                     prompt construction + structured-reply parsing
-    ├── prism.py                    the one LLM call (Groq via OpenAI SDK), PRISM tracing seam
-    └── store.py                     in-memory worker profiles + conversation history
-scripts/
-└── run_scenarios.py         repeatable scenario battery for PRISM before/after comparisons
-docs/
-└── prism_evaluation.md      working log for the Observe/Improve/Prove evidence
-tests/
-    test_onboarding.py, test_chat.py
+solaris/
+├── src/solaris/              research pipeline (importable, tested)
+│   ├── config.py               paths, split boundaries, cities, constants
+│   ├── features.py             feature engineering + the leakage guard
+│   ├── evaluate.py             metrics, slices, peak and ramp statistics
+│   ├── experiment.py           the full experiment; writes evaluation.json
+│   ├── report.py               figures and tables, from saved results
+│   ├── webexport.py            static JSON bundle for the web app
+│   ├── cli.py                  every reproducible command
+│   ├── data/
+│   │   ├── grid.py               download + parse Grid-India SCADA workbooks
+│   │   ├── weather.py            archived forecasts, national weather index
+│   │   └── build.py              join, quality-flag, label
+│   └── models/
+│       ├── splits.py             chronological + rolling-origin splits
+│       ├── baselines.py          naive, climatology, ridge
+│       └── gbm.py                LightGBM point and quantile models
+│
+├── app/                      FastAPI read-only presentation layer
+│   ├── main.py                 app, health check, static mount
+│   ├── routes/api.py           JSON API over the exported bundle
+│   ├── services/results.py     stdlib-only reader (no pandas/numpy)
+│   ├── data/                   exported JSON bundle, written by the pipeline
+│   └── static/                 the dashboard (HTML/CSS/vanilla JS + Plotly)
+│
+├── data/   raw → interim → processed   (raw and interim gitignored)
+├── models/ trained boosters + metadata sidecars
+├── reports/ evaluation.json, EVALUATION.md, figures/, tables/
+├── docs/   DATA_SOURCES, METHODOLOGY, MODEL_CARD, PROJECT_EXPLAINED
+└── tests/  104 tests, no network or API keys required
 ```
 
-Every LLM call — onboarding-time or follow-up — goes through
-`app/services/prism.py`. That's the one seam where tracing is wired in, so
-changing PRISM's credentials or host never touches route or prompt code.
+Data flow:
 
-## PRISM integration
+```
+Mendeley .xlsx (713 MB, 5-min / 10-sec SCADA)
+        │  grid.py — parse, localise to IST, aggregate to hourly
+        ▼
+Open-Meteo previous-runs (18 cities, day-ahead forecast temperature)
+        │  weather.py — population-weighted national index
+        ▼
+build.py — inner join, quality flags, hot-period + evening labels
+        ▼
+features.py — calendar / history / weather, leakage-guarded
+        ▼
+experiment.py — fit 9 models, score on the chronological holdout
+        ▼
+reports/evaluation.json ──► report.py ──► figures + tables
+                                     └──► webexport.py ──► app/data/*.json
+                                                            └──► dashboard
+```
 
-Onboarded via prism.blockconvey.com/onboarding. The real integration is a
-**side-channel trace POST**, not a proxy the LLM call routes through (an
-earlier version of this doc guessed at a "zero-code proxy" model before
-onboarding — that guess was wrong): `prism.py` calls Groq directly, then
-best-effort POSTs one trace per reply to `{PRISMTRACE_HOST}/api/traces`
-with header `X-PRISMtrace-Key`. A missing `PRISMTRACE_API_KEY` or a failed
-POST never affects the chat reply.
-
-- `agent_id` is a hardcoded constant, `"solaris-heat-safety"`, sent as an
-  extra field on each trace (not in PRISM's documented schema, but
-  harmless if ignored).
-- `session_id` is `"<worker_id>:<YYYY-MM-DD>"` — stable per worker per day,
-  so a whole day's conversation traces as one PRISM trajectory.
-- Set `PRISMTRACE_API_KEY` / `PRISMTRACE_PROJECT_ID` / `PRISMTRACE_HOST` in
-  `.env` to enable tracing; leave `PRISMTRACE_API_KEY` blank to disable it.
-- **Not yet verified**: the credential handshake and a live trace haven't
-  actually been confirmed against PRISM's dashboard. See `CLAUDE.md` for
-  why and what's left to check.
-- `scripts/run_scenarios.py` replays a fixed set of onboarding +
-  conversation scenarios (mild day, extreme heat + symptoms, "can't take a
-  break" follow-up) against the running API. Run it before and after a
-  fix to get directly comparable PRISM traces — see
-  `docs/prism_evaluation.md` for the log template.
+---
 
 ## Setup
 
+Requires Python 3.11 or later.
+
 ```bash
+git clone https://github.com/dhairyabhosale/solaris
+cd solaris
+
 python -m venv .venv
 .venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
+# source .venv/bin/activate   # macOS / Linux
 
+# Full research pipeline (data, modelling, evaluation, reports):
+pip install -r requirements-research.txt
+
+# Or, to run only the dashboard over the committed results:
 pip install -r requirements.txt
-cp .env.example .env          # then fill in GROQ_API_KEY (and PRISM_* once available)
 ```
 
-### LLM: Groq
+The split is deliberate. `requirements.txt` holds just the four packages the
+web app needs, because the dashboard reads a pre-exported JSON bundle with the
+standard library and serverless platforms install from the root file. The
+modelling stack lives in `requirements-research.txt`.
 
-Solaris calls [Groq](https://console.groq.com) through the OpenAI Python SDK
-(`base_url=https://api.groq.com/openai/v1`). Get a key at
-https://console.groq.com/keys and set:
+**No API keys are needed.** Both data sources are open and unauthenticated,
+and nothing in this project calls a third-party LLM.
 
-- `GROQ_API_KEY` - required.
-- `GROQ_MODEL` - defaults to `openai/gpt-oss-120b`, Groq's own recommended
-  replacement for the now-deprecated `llama-3.3-70b-versatile`. It's one
-  of the few models on Groq with native strict structured-output support,
-  which the app relies on for a parseable `risk_level` / `escalate` /
-  `message` reply - check
-  https://console.groq.com/docs/structured-outputs before switching models,
-  and https://console.groq.com/docs/rate-limits for current free-tier
-  limits per model.
+### Run the dashboard immediately
 
-When a rate limit or a slow/unavailable model is hit, the chat shows a
-readable "try again" message instead of an error.
-
-Run the API:
+The evaluation outputs and test-period predictions are committed, so the app
+works straight after a clone:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Docs at `http://127.0.0.1:8000/docs`.
+Open http://127.0.0.1:8000. `GET /health` reports which artefacts are present.
 
-## Try it
+### Deploying
 
-```bash
-curl -X POST http://127.0.0.1:8000/onboarding \
-  -H "Content-Type: application/json" \
-  -d '{
-        "worker_id": "worker-1",
-        "work_type": "construction - rebar",
-        "work_start": "07:00",
-        "work_end": "16:00",
-        "location": "Chennai"
-      }'
+The repository is configured for Vercel. `pyproject.toml` declares the ASGI
+entrypoint (`app.main:app`) and the four runtime dependencies; `vercel.json`
+sets `excludeFiles` so the research directories stay out of the function
+bundle. The deployed function is about 1.5 MB of app code and exported JSON
+plus ~35 MB of dependencies, well inside the 500 MB limit for Python
+functions.
 
-curl -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"worker_id": "worker-1", "message": "Checking in for today"}'
-```
+**Git-based deploy (recommended).** Import the repository in the Vercel
+dashboard. Because `data/raw/`, `data/interim/` and the trained boosters are
+gitignored, the checkout Vercel builds from is only ~2.6 MB and nothing needs
+excluding.
 
-Or run the full scenario battery:
+**CLI deploy.**
 
 ```bash
-python scripts/run_scenarios.py
+vercel login
+vercel --prod
 ```
 
-## Tests
+One caveat if you deploy with the CLI from this working directory: the CLI
+builds Python locally and, in the version tested (59.9.1), bundled the whole
+project tree including the 719 MB `data/raw/` download, ignoring both
+`excludeFiles` and `.vercelignore`. If you hit
+`Total bundle size exceeds the maximum function size`, either deploy from Git
+instead, or deploy a directory containing only `app/`, `pyproject.toml` and
+`vercel.json` — the app needs nothing else at runtime.
+
+### Reproduce the whole thing from source
+
+```bash
+python -m solaris.cli fetch-grid      # ~713 MB from Mendeley (slow)
+python -m solaris.cli fetch-weather   # archived forecasts for 18 cities
+python -m solaris.cli prepare         # parse, join, quality-check
+python -m solaris.cli train --rolling # fit and evaluate every model
+python -m solaris.cli report          # regenerate figures and tables
+```
+
+Or `python -m solaris.cli all` for prepare + train + report once the raw data
+is fetched. Parsing the workbooks takes several minutes; the hourly result is
+cached in `data/interim/` and reused unless `--reparse-grid` is passed.
+
+### Tests
 
 ```bash
 pytest
 ```
 
-`test_chat.py` monkeypatches the weather and LLM calls, so tests run
-without real API keys or network access.
+108 tests, all offline — they use small synthetic fixtures and stub the
+artefact loaders, so no download, network access or API key is required. One
+test parses the `app/` source tree and fails if the web layer ever imports
+pandas, numpy or the modelling stack, which is what keeps the deployment small.
 
-## Notes / current scope
+---
 
-- Worker profiles and conversation history are in-memory only (reset on
-  restart) — deliberate, for fast iteration overnight. Swap
-  `app/services/store.py` for real persistence later without touching
-  routes.
-- `worker_id` is any string the client sends at onboarding (name, phone,
-  employee code) — no auth, this is a hackathon demo.
-- Weather comes from Open-Meteo (free, no API key): geocoding + current
-  conditions, cached per location per day.
+## The dashboard
+
+Seven views, all driven by the API:
+
+1. **Overview** — purpose, data coverage, model version, four real KPIs
+2. **Forecast** — hourly actual vs predicted with a selectable date window,
+   comparison model and uncertainty band; jump to the peak-demand day
+3. **Heat and demand** — temperature against demand, hot vs non-hot error,
+   threshold sensitivity
+4. **Evening grid stress** — the average day, ramp statistics, when the
+   steepest ramp occurs
+5. **Model performance** — every model scored, error by hour, residuals, the
+   extrapolation failure, uncertainty calibration
+6. **Explainability** — feature importance with its caveats
+7. **Data and methodology** — sources, splits, sensitivity checks, limitations
+
+The dashboard states on every page that the data is historical and does not
+update. It shows no invented metrics, no fake live indicators, and surfaces
+the calibration failure rather than hiding it.
+
+---
+
+## Limitations
+
+- **Only forecast temperature** is available at a genuine day-ahead lead;
+  humidity and radiation forecasts are not, and are excluded rather than
+  substituted with observations.
+- **Population-weighted weather is a proxy** for demand-weighted weather. The
+  conclusion survives all three weighting schemes tested; the magnitude varies
+  (11.07% / 10.52% / 7.29%).
+- **The uncertainty band is not calibrated.** P10–P90 covers 57.5% of actuals
+  against a nominal 80% on the test period (72.0% on validation). It is
+  reported as measured and should not be used as a risk band.
+- **Hot periods are research-defined** by a temperature percentile, not IMD
+  heatwave declarations.
+- **Residual load is an indicator**, not an operator net load: it excludes
+  behind-the-meter solar, interchange and storage.
+- **Associations, not causation.** Nothing here identifies a causal effect of
+  temperature on demand.
+- **The data ends 31 December 2023.** No 2024–2026 demand record has been
+  evaluated and no claim is made about one.
+- **Not for operational use.** This is a research artefact.
+
+---
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | Provenance, licences, coverage, verified discrepancies, peak cross-check |
+| [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) | Task definition, leakage safeguards, splits, features, models, evaluation |
+| [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) | Intended and non-intended use, metrics, failure modes, limitations |
+| [`docs/PROJECT_EXPLAINED.txt`](docs/PROJECT_EXPLAINED.txt) | Plain-language guide for presenting and defending the project |
+| [`reports/EVALUATION.md`](reports/EVALUATION.md) | Generated evaluation report — rebuilt by `solaris.cli report` |
+
+---
+
+## Attribution
+
+- Electricity data: Mukherjee, D.; Kalita, K.; Kumar, S. (2024), *Electricity
+  Demand, Solar and Wind Generation Data (2021-2023) of India at 1-hour
+  interval*, Mendeley Data V1, doi:10.17632/y58jknpgs8.1, CC BY 4.0.
+  Originating source: NERLDC, Grid-India, Ministry of Power, Government of
+  India.
+- Weather data by [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0.
+
+This project is independent research and is not affiliated with or endorsed by
+Grid-India, the Central Electricity Authority or the Ministry of Power.
