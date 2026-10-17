@@ -195,9 +195,12 @@ def figure_error_by_hour(metrics: dict):
                 x=table.index, y=table[name], name=name, mode="lines+markers",
                 line={"color": colour, "width": 2},
             ))
+    # A neutral band, not a warm one. On the web dashboard warm colour is
+    # reserved for the forecast, so a coloured highlight here would read as a
+    # third meaning.
     start, end = config.EVENING_WINDOW
     figure.add_vrect(
-        x0=start - 0.5, x1=end + 0.5, fillcolor=PALETTE["hot"], opacity=0.07,
+        x0=start - 0.5, x1=end + 0.5, fillcolor="#8c9bb5", opacity=0.08,
         line_width=0, annotation_text="evening window", annotation_position="top left",
     )
     figure.update_layout(
@@ -246,33 +249,33 @@ def figure_temperature_vs_demand(dataset: pd.DataFrame):
         "max_temp_c": dataset["temperature_2m_fc_pop"].resample("1D").max(),
         "mean_temp_c": dataset["temperature_2m_fc_pop"].resample("1D").mean(),
     }).dropna()
-    daily["month"] = daily.index.month
+    # Grid operators speak in gigawatts.
+    daily["peak_demand_gw"] = daily["peak_demand_mw"] / 1000
 
     figure = go.Figure()
     figure.add_trace(go.Scatter(
-        x=daily["max_temp_c"], y=daily["peak_demand_mw"], mode="markers",
-        marker={
-            "size": 6, "opacity": 0.55, "color": daily["month"],
-            "colorscale": "Turbo", "showscale": True,
-            "colorbar": {"title": "Month"},
-        },
+        x=daily["max_temp_c"], y=daily["peak_demand_gw"], mode="markers",
+        marker={"size": 5, "opacity": 0.35, "color": PALETTE["weather"]},
         text=[d.strftime("%Y-%m-%d") for d in daily.index],
-        hovertemplate="%{text}<br>Max temp %{x:.1f} C<br>Peak %{y:,.0f} MW<extra></extra>",
+        hovertemplate="%{text}<br>Max temp %{x:.1f} C<br>Peak %{y:.1f} GW<extra></extra>",
         name="Day",
+        showlegend=False,
     ))
 
     # A LOWESS-style trend via a rolling median over sorted temperature, which
     # shows the shape of the relationship without asserting a functional form.
     ordered = daily.sort_values("max_temp_c")
-    trend = ordered["peak_demand_mw"].rolling(45, center=True, min_periods=15).median()
+    trend = ordered["peak_demand_gw"].rolling(45, center=True, min_periods=15).median()
     figure.add_trace(go.Scatter(
         x=ordered["max_temp_c"], y=trend, name="Rolling median",
-        line={"color": PALETTE["hot"], "width": 3},
+        line={"color": PALETTE["actual"], "width": 2},
+        hovertemplate="%{y:.1f} GW<extra>Rolling median</extra>",
+        showlegend=False,
     ))
     figure.update_layout(
         title="Daily peak demand vs daily maximum population-weighted forecast temperature",
-        xaxis_title="Daily max national forecast temperature (C)",
-        yaxis_title="Daily peak all-India demand (MW)",
+        xaxis_title="Daily maximum national forecast temperature (C)",
+        yaxis_title="Daily peak all-India demand (GW)",
     )
     return figure
 
@@ -318,19 +321,24 @@ def figure_residuals(predictions: pd.DataFrame):
     )
     figure.add_trace(
         go.Scattergl(
-            x=predictions[config.TARGET], y=residual, mode="markers",
+            # Demand on a gigawatt axis; the residual stays in megawatts
+            # because that is the scale the error is reported at.
+            x=predictions[config.TARGET] / 1000, y=residual, mode="markers",
             marker={"size": 4, "opacity": 0.35, "color": PALETTE["baseline"]},
             name="Hour",
         ),
         row=1, col=2,
     )
     figure.add_hline(y=0, line={"color": PALETTE["actual"], "dash": "dash"}, row=1, col=2)
-    figure.update_xaxes(title_text="Predicted - actual (MW)", row=1, col=1)
-    figure.update_xaxes(title_text="Actual demand (MW)", row=1, col=2)
+    figure.update_xaxes(title_text="Predicted minus actual (MW)", row=1, col=1)
+    figure.update_xaxes(title_text="Actual demand (GW)", row=1, col=2)
     figure.update_yaxes(title_text="Residual (MW)", row=1, col=2)
     figure.update_layout(
         title="Weather-enhanced model residuals on the held-out test period",
         showlegend=False,
+        # Room for the two subplot titles, which otherwise collide with the
+        # plot area once the web app strips the figure's own title.
+        margin={"t": 56},
     )
     return figure
 
@@ -362,24 +370,28 @@ def figure_peak_scatter(predictions: pd.DataFrame):
     if table.empty:
         return None
 
-    low = float(min(table["actual_peak_mw"].min(), table["predicted_peak_mw"].min()))
-    high = float(max(table["actual_peak_mw"].max(), table["predicted_peak_mw"].max()))
+    # Gigawatts, the unit grid operators actually use.
+    actual = table["actual_peak_mw"] / 1000
+    predicted = table["predicted_peak_mw"] / 1000
+    low = float(min(actual.min(), predicted.min()))
+    high = float(max(actual.max(), predicted.max()))
 
     figure = go.Figure()
     figure.add_trace(go.Scatter(
         x=[low, high], y=[low, high], mode="lines", name="Perfect forecast",
-        line={"color": PALETTE["naive"], "dash": "dash"},
+        line={"color": PALETTE["naive"], "dash": "dash", "width": 1.3},
+        hoverinfo="skip", showlegend=False,
     ))
     figure.add_trace(go.Scatter(
-        x=table["actual_peak_mw"], y=table["predicted_peak_mw"], mode="markers",
-        marker={"size": 8, "opacity": 0.7, "color": PALETTE["weather"]},
+        x=actual, y=predicted, mode="markers",
+        marker={"size": 6, "opacity": 0.45, "color": PALETTE["weather"]},
         text=[d.strftime("%Y-%m-%d") for d in table.index],
-        hovertemplate="%{text}<br>Actual %{x:,.0f} MW<br>Predicted %{y:,.0f} MW<extra></extra>",
-        name="Day",
+        hovertemplate="%{text}<br>Actual %{x:.1f} GW<br>Predicted %{y:.1f} GW<extra></extra>",
+        name="Day", showlegend=False,
     ))
     figure.update_layout(
         title="Daily peak demand: predicted vs actual (test period)",
-        xaxis_title="Actual daily peak (MW)", yaxis_title="Predicted daily peak (MW)",
+        xaxis_title="Actual daily peak (GW)", yaxis_title="Predicted daily peak (GW)",
     )
     return figure
 
