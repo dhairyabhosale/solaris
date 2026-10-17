@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
   <title>Solaris</title>
   <path d="M3 23.5C6.2 23.5 7.6 17 11 17c3.4 0 4 4.2 7 1.6C21.2 15.8 21.4 8.5 25.5 8.5"
-        stroke="#e6e8eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="26.6" cy="8.5" r="3.4" fill="#f2a43a"/>
+        stroke="#0D05F2" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="26.8" cy="8.5" r="3.6" fill="#F24405"/>
 </svg>

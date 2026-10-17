@@ -205,7 +205,7 @@ def figure_error_by_hour(metrics: dict):
     )
     figure.update_layout(
         title="Forecast error by hour of day (test period)",
-        xaxis_title="Hour of day (IST)", yaxis_title="MAE (MW)",
+        xaxis_title="Hour of day (IST)", yaxis_title="Average error (MW)",
     )
     return figure
 
@@ -331,6 +331,7 @@ def figure_residuals(predictions: pd.DataFrame):
     )
     figure.add_hline(y=0, line={"color": PALETTE["actual"], "dash": "dash"}, row=1, col=2)
     figure.update_xaxes(title_text="Predicted minus actual (MW)", row=1, col=1)
+    figure.update_yaxes(title_text="Number of hours", row=1, col=1)
     figure.update_xaxes(title_text="Actual demand (GW)", row=1, col=2)
     figure.update_yaxes(title_text="Residual (MW)", row=1, col=2)
     figure.update_layout(

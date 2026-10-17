@@ -15,18 +15,19 @@
 // --------------------------------------------------------------------------
 
 const C = {
-  bg: '#0b0e13',
-  surface: '#11151c',
-  ink: '#e6e8eb',
-  ink2: '#c9cdd3',
-  muted: '#98a0ab',
-  faint: '#636b76',
-  line: 'rgba(230, 232, 235, .12)',
-  lineStrong: 'rgba(230, 232, 235, .24)',
-  amber: '#f2a43a',
-  amberBand: 'rgba(242, 164, 58, .14)',
-  baseline: '#7f8a99',
-  heatHot: '#e8673a',
+  bg: '#f6f7fb',
+  surface: '#ffffff',
+  ink: '#1a1c23',
+  ink2: '#3d4150',
+  muted: '#6b7080',
+  line: 'rgba(26, 28, 35, .10)',
+  lineStrong: 'rgba(26, 28, 35, .22)',
+  blue: '#0d05f2',
+  blue2: '#6379f2',
+  amber: '#f2ac29',
+  amberBand: 'rgba(242, 172, 41, .14)',
+  orange: '#f24405',
+  baseline: '#8a8f9f',   // see style.css: #9196a6 fails 3:1 on white
 };
 
 const FONT = 'Archivo, system-ui, sans-serif';
@@ -122,7 +123,15 @@ function toast(message) {
 function valueMarkup(value, unit, decimals = 0, lead = false) {
   const cls = lead ? 'lead-value' : 'stat-value';
   const u = unit ? `<span class="unit">${NBSP}${escapeHtml(unit)}</span>` : '';
-  return `<span class="${cls}"><span class="num">${fmt(value, decimals)}</span>${u}</span>`;
+  // The number starts at zero and carries its target, so the scroll reveal can
+  // count it up. `armCountUps` fills it immediately whenever no reveal will
+  // come: motion off, no GSAP, or a strip that has already been revealed.
+  const safe = (value === null || value === undefined || Number.isNaN(value));
+  if (safe) {
+    return `<span class="${cls}"><span class="num">n/a</span></span>`;
+  }
+  return `<span class="${cls}"><span class="num" data-target="${value}" `
+       + `data-decimals="${decimals}">${fmt(0, decimals)}</span>${u}</span>`;
 }
 
 function stripCell(value, unit, caption, decimals, lead) {
@@ -216,6 +225,8 @@ function buildReveals(viewName) {
       .forEach((el) => {
         gsap.fromTo(el, { y: 32 }, {
           y: 0, duration: .85, ease: 'power3.out', clearProps: 'transform',
+          // Numbers start counting exactly as their strip moves into place.
+          onStart: () => { el.dataset.revealed = '1'; runCountUps(el); },
           scrollTrigger: { trigger: el, start: 'top 94%', once: true },
         });
       });
@@ -456,15 +467,15 @@ const AXIS = {
   ticks: 'outside',
   ticklen: 4,
   tickcolor: C.lineStrong,
-  tickfont: { family: FONT, size: 12, color: C.muted },
-  title: { font: { family: FONT, size: 12, color: C.muted } },
+  tickfont: { family: FONT, size: 12, color: C.ink },
+  title: { font: { family: FONT, size: 12, color: C.ink } },
   automargin: true,
 };
 
 const LAYOUT = {
-  paper_bgcolor: 'rgba(0,0,0,0)',
-  plot_bgcolor: 'rgba(0,0,0,0)',
-  font: { family: FONT, size: 12, color: C.muted },
+  paper_bgcolor: C.surface,
+  plot_bgcolor: C.surface,
+  font: { family: FONT, size: 12, color: C.ink },
   margin: { l: 58, r: 24, t: 12, b: 44 },
   hovermode: 'x unified',
   hoverlabel: {
@@ -472,6 +483,7 @@ const LAYOUT = {
     bordercolor: C.lineStrong,
     font: { family: FONT, size: 13, color: C.ink },
   },
+  // Enough room on the right for direct end-of-line labels.
   // Horizontal gridlines only.
   xaxis: { ...AXIS, showgrid: false },
   yaxis: { ...AXIS, showgrid: true },
@@ -556,8 +568,18 @@ function renderSaved(id, figure, { lock = true } = {}) {
       ? saved.margin : LAYOUT.margin,
   };
   Object.keys(saved).forEach((key) => {
-    if (/^xaxis\d*$/.test(key)) layout[key] = { ...saved[key], ...AXIS, showgrid: false, fixedrange: lock };
-    if (/^yaxis\d*$/.test(key)) layout[key] = { ...saved[key], ...AXIS, showgrid: true, fixedrange: lock };
+    if (!/^[xy]axis\d*$/.test(key)) return;
+    const isY = key.startsWith('y');
+    // Spreading AXIS wholesale would replace the saved axis title, which
+    // carries the text, with AXIS.title, which carries only the font. Merge
+    // the two so the pipeline's axis labels and units survive the re-theme.
+    layout[key] = {
+      ...saved[key],
+      ...AXIS,
+      title: { ...(saved[key] && saved[key].title), font: AXIS.title.font },
+      showgrid: isY,
+      fixedrange: lock,
+    };
   });
   // Recolour saved traces onto the semantic palette.
   const data = (figure.data || []).map((trace) => recolour(trace));
@@ -575,19 +597,19 @@ function recolour(trace) {
 
   if (out.line) {
     out.line = { ...out.line };
-    if (isForecast) { out.line.color = C.amber; out.line.width = 1.5; }
-    else if (isBaseline) { out.line.color = C.baseline; out.line.width = 1.3; out.line.dash = 'dash'; }
-    else { out.line.color = C.ink; out.line.width = 1.75; }
+    if (isForecast) { out.line.color = C.orange; out.line.width = 1.8; out.line.dash = 'dash'; }
+    else if (isBaseline) { out.line.color = C.baseline; out.line.width = 1.4; out.line.dash = 'dot'; }
+    else { out.line.color = C.blue; out.line.width = 1.8; }
   }
   if (out.marker && out.type !== 'bar') {
-    out.marker = { ...out.marker, color: isBaseline ? C.baseline : C.amber, line: { width: 0 } };
-    if (out.mode && out.mode.includes('markers')) out.marker.opacity = .35;
+    out.marker = { ...out.marker, color: isBaseline ? C.baseline : C.orange, line: { width: 0 } };
+    if (out.mode && out.mode.includes('markers')) out.marker.opacity = .4;
   }
   if (out.type === 'bar') {
-    out.marker = { ...(out.marker || {}), color: C.amber, line: { width: 0 } };
+    out.marker = { ...(out.marker || {}), color: C.orange, line: { width: 0 } };
   }
   if (out.type === 'histogram') {
-    out.marker = { color: C.amber, line: { width: 0 } };
+    out.marker = { color: C.orange, line: { width: 0 } };
   }
   return out;
 }
@@ -629,218 +651,249 @@ function countUp(element, target, decimals) {
   requestAnimationFrame(step);
 }
 
+/* Run every pending count-up inside `root`, at most once per number.
+ * The per-node guard means a view switch, a rebuild of the motion system or a
+ * second reveal can never restart a number that has already counted. */
 function runCountUps(root) {
+  if (!root) return;
   root.querySelectorAll('.num[data-target]').forEach((el) => {
+    if (el.dataset.counted === '1') return;
+    el.dataset.counted = '1';
     countUp(el, parseFloat(el.dataset.target), parseInt(el.dataset.decimals || '0', 10));
   });
 }
 
+/* Called by a view loader once a strip's markup exists.
+ *
+ * The count-up is normally started by the strip's scroll reveal, so a reader
+ * who scrolls down sees the number actually counting rather than a figure that
+ * finished while it was off screen. It only runs here when there will be no
+ * reveal to wait for: motion is off, GSAP is unavailable, or the strip has
+ * already been revealed and is simply being re-rendered. */
+function armCountUps(root) {
+  if (!root) return;
+  if (!motionOn() || !hasGsap() || root.dataset.revealed === '1') runCountUps(root);
+}
+
 // --------------------------------------------------------------------------
-// Hero figure, drawn from real test-period data
+// Hero visualisation
 // --------------------------------------------------------------------------
 
-let heroData = null;
-let heroDrawn = false;
-
-async function loadHeroFigure() {
+/* A looping illustration of the idea behind the project: a load curve is
+ * observed up to "now", then continues as a forecast whose uncertainty band
+ * widens with the horizon.
+ *
+ * The shape is generated, not measured. It carries no axis values, no units
+ * and a caption saying so, because this project does not put invented numbers
+ * in front of a reader. It is decoration that explains the concept. Every real
+ * figure on the site comes from the evaluation run.
+ */
+function startHeroViz() {
   const canvas = $('heroCanvas');
   if (!canvas) return;
+  const ctx = canvas.getContext('2d');
 
-  try {
-    // Take a wide tail of the test period and keep the last stretch that has a
-    // forecast, since the final test hours have no archived weather forecast.
-    const series = await api('/api/series?hours=720');
-    const { timestamps, columns } = series;
-    let end = columns.lgbm_weather.length - 1;
-    while (end >= 0 && columns.lgbm_weather[end] === null) end -= 1;
-    const span = 96;
-    const from = Math.max(0, end - span + 1);
-    const cut = Math.max(from + 1, end - 23);   // last 24 hours shown as forecast
+  let width = 0;
+  let height = 0;
+  let running = false;
+  let frame = null;
+  let onScreen = true;
 
-    heroData = {
-      times: timestamps.slice(from, end + 1),
-      demand: columns.demand_mw.slice(from, end + 1),
-      forecast: columns.lgbm_weather.slice(from, end + 1),
-      lo: (columns.q10 || []).slice(from, end + 1),
-      hi: (columns.q90 || []).slice(from, end + 1),
-      splitIndex: cut - from,
-    };
-    $('heroSource').textContent =
-      `Observed demand and the model's day-ahead forecast for `
-      + `${prettyDate(heroData.times[0])} to ${prettyDate(heroData.times[heroData.times.length - 1])}, `
-      + 'the end of the held-out test period. Source: Grid-India hourly demand via '
-      + 'Mendeley, CC BY 4.0; Solaris model output.';
-  } catch (error) {
-    heroData = null;
-    $('heroSource').textContent =
-      'Illustrative curve: the measured series could not be loaded. '
-      + 'Run python -m solaris.cli report to regenerate it.';
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const rect = canvas.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  sizeHeroCanvas();
-  drawHero();
-}
+  /* A plausible daily load shape in normalised units: overnight trough,
+   * midday shoulder, and the evening peak this project is about. */
+  function load(t) {
+    return (
+      0.5
+      + 0.20 * Math.sin(t - 1.7)
+      + 0.13 * Math.sin(2 * t + 0.6)
+      + 0.05 * Math.sin(3.4 * t + 1.1)
+      + 0.025 * Math.sin(7.3 * t)
+    );
+  }
 
-function sizeHeroCanvas() {
-  const canvas = $('heroCanvas');
-  if (!canvas) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  canvas._cssSize = [rect.width, rect.height];
-}
+  const PAD_L = 18;
+  const PAD_R = 18;
+  const PAD_T = 34;
+  const PAD_B = 24;
 
-/** Draw once. Animated on first paint when motion is on, static otherwise. */
-function drawHero() {
-  const canvas = $('heroCanvas');
-  if (!canvas || !canvas._cssSize) return;
-  const ctx = canvas.getContext('2d');
-  const [W, H] = canvas._cssSize;
+  function draw(timestamp) {
+    const phase = timestamp / 5200;
+    const plotW = width - PAD_L - PAD_R;
+    const plotH = height - PAD_T - PAD_B;
+    const toY = (v) => PAD_T + plotH - v * plotH * 0.84 - plotH * 0.08;
 
-  // Fall back to a generated shape only if the API could not be read.
-  const data = heroData || fallbackHero();
-  const n = data.times.length;
-  if (!n) return;
+    ctx.clearRect(0, 0, width, height);
 
-  const PAD = { l: 8, r: 92, t: 20, b: 24 };
-  const plotW = W - PAD.l - PAD.r;
-  const plotH = H - PAD.t - PAD.b;
-
-  const values = [];
-  data.demand.forEach((v) => { if (v !== null) values.push(v); });
-  data.forecast.forEach((v) => { if (v !== null) values.push(v); });
-  data.lo.forEach((v) => { if (v !== null) values.push(v); });
-  data.hi.forEach((v) => { if (v !== null) values.push(v); });
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const pad = (max - min) * 0.14 || 1;
-  const toX = (i) => PAD.l + (plotW * i) / Math.max(n - 1, 1);
-  const toY = (v) => PAD.t + plotH - ((v - min + pad) / (max - min + pad * 2)) * plotH;
-
-  const render = (progress) => {
-    ctx.clearRect(0, 0, W, H);
-
-    // Horizontal gridlines only.
-    ctx.strokeStyle = C.line;
+    // Grid, drifting left so the panel reads as a monitor.
+    ctx.strokeStyle = 'rgba(26, 28, 35, 0.07)';
     ctx.lineWidth = 1;
-    for (let i = 0; i <= 3; i += 1) {
-      const y = PAD.t + (plotH / 3) * i;
-      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    for (let i = 0; i <= 4; i += 1) {
+      const y = PAD_T + (plotH / 4) * i;
+      ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(width - PAD_R, y); ctx.stroke();
+    }
+    const spacing = 58;
+    const drift = (phase * 90) % spacing;
+    for (let x = PAD_L - drift; x < width - PAD_R; x += spacing) {
+      if (x < PAD_L) continue;
+      ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, PAD_T + plotH); ctx.stroke();
     }
 
-    const split = data.splitIndex;
-    const shown = Math.max(1, Math.round(n * progress));
+    // "Now" sits two thirds across: observed behind it, forecast ahead.
+    const nowX = PAD_L + plotW * 0.62;
+    const span = 7.2;
+    const steps = 150;
+    const tAt = (x) => ((x - PAD_L) / plotW) * span + phase * 2.0;
+    const aheadW = Math.max(width - PAD_R - nowX, 1);
 
-    // Uncertainty range behind the forecast.
-    if (progress > .82) {
-      const bandAlpha = Math.min((progress - .82) / .18, 1);
-      ctx.save();
-      ctx.globalAlpha = bandAlpha;
-      ctx.beginPath();
-      let started = false;
-      for (let i = split; i < n; i += 1) {
-        if (data.hi[i] === null) continue;
-        const x = toX(i); const y = toY(data.hi[i]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-      }
-      for (let i = n - 1; i >= split; i -= 1) {
-        if (data.lo[i] === null) continue;
-        ctx.lineTo(toX(i), toY(data.lo[i]));
-      }
-      ctx.closePath();
-      ctx.fillStyle = C.amberBand;
-      ctx.fill();
-      ctx.restore();
+    // Uncertainty band, widening with the forecast horizon.
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const x = nowX + (aheadW * i) / steps;
+      const h = (x - nowX) / aheadW;
+      ctx.lineTo(x, toY(load(tAt(x)) + 0.035 + 0.1 * h * h));
     }
+    for (let i = steps; i >= 0; i -= 1) {
+      const x = nowX + (aheadW * i) / steps;
+      const h = (x - nowX) / aheadW;
+      ctx.lineTo(x, toY(load(tAt(x)) - 0.035 - 0.1 * h * h));
+    }
+    ctx.closePath();
+    ctx.fillStyle = C.amberBand;
+    ctx.fill();
 
-    // Observed demand.
-    ctx.strokeStyle = C.ink;
-    ctx.lineWidth = 1.75;
+    // Observed segment, running from the secondary blue into near-black.
+    const stroke = ctx.createLinearGradient(PAD_L, 0, nowX, 0);
+    stroke.addColorStop(0, C.blue2);
+    stroke.addColorStop(1, C.ink);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2.2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < Math.min(shown, split + 1); i += 1) {
-      if (data.demand[i] === null) continue;
-      const x = toX(i); const y = toY(data.demand[i]);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    for (let i = 0; i <= steps; i += 1) {
+      const x = PAD_L + ((nowX - PAD_L) * i) / steps;
+      ctx.lineTo(x, toY(load(tAt(x))));
     }
     ctx.stroke();
 
-    if (progress > .82) {
-      const alpha = Math.min((progress - .82) / .18, 1);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-
-      // The forecast-issue moment.
-      ctx.setLineDash([2, 4]);
-      ctx.strokeStyle = C.lineStrong;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(toX(split), PAD.t);
-      ctx.lineTo(toX(split), PAD.t + plotH);
-      ctx.stroke();
-
-      // Forecast.
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = C.amber;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      started = false;
-      for (let i = split; i < n; i += 1) {
-        if (data.forecast[i] === null) continue;
-        const x = toX(i); const y = toY(data.forecast[i]);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.restore();
-      ctx.setLineDash([]);
-
-      // Direct labels at the line ends.
-      ctx.globalAlpha = alpha;
-      ctx.font = `13px ${FONT}`;
-      ctx.textBaseline = 'middle';
-      let lastObs = split;
-      while (lastObs > 0 && data.demand[lastObs] === null) lastObs -= 1;
-      ctx.fillStyle = C.ink;
-      ctx.fillText('Observed', toX(split) - 72, toY(data.demand[lastObs]) - 16);
-      let lastFc = n - 1;
-      while (lastFc > split && data.forecast[lastFc] === null) lastFc -= 1;
-      ctx.fillStyle = C.amber;
-      ctx.fillText('Forecast', toX(lastFc) + 8, toY(data.forecast[lastFc]));
-      ctx.globalAlpha = 1;
+    // Forecast segment, dashed to separate it from what was measured.
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = C.orange;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const x = nowX + (aheadW * i) / steps;
+      ctx.lineTo(x, toY(load(tAt(x))));
     }
-  };
+    ctx.stroke();
+    ctx.restore();
 
-  if (!motionOn() || heroDrawn) { render(1); heroDrawn = true; return; }
-  heroDrawn = true;
-  const start = performance.now();
-  const step = (now) => {
-    const t = Math.min((now - start) / 1800, 1);
-    const eased = 1 - Math.pow(1 - t, 3);
-    render(eased);
-    if (t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
+    // The forecast-issue moment.
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = C.lineStrong;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(nowX, PAD_T - 6);
+    ctx.lineTo(nowX, PAD_T + plotH);
+    ctx.stroke();
+    ctx.restore();
 
-/** Only used when the API cannot be reached. The caption says so. */
-function fallbackHero() {
-  const n = 96;
-  const times = []; const demand = []; const forecast = []; const lo = []; const hi = [];
-  const split = 72;
-  for (let i = 0; i < n; i += 1) {
-    const t = (i / 24) * Math.PI * 2;
-    const v = 180 + 22 * Math.sin(t - 1.7) + 12 * Math.sin(2 * t + .6);
-    times.push('');
-    demand.push(i <= split ? v : null);
-    forecast.push(i >= split ? v : null);
-    lo.push(i >= split ? v - 4 - (i - split) * .22 : null);
-    hi.push(i >= split ? v + 4 + (i - split) * .22 : null);
+    const headY = toY(load(tAt(nowX)));
+    const halo = 9.5 + Math.sin(timestamp / 300) * 1.4;
+    ctx.beginPath();
+    ctx.arc(nowX, headY, halo, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(242, 68, 5, 0.14)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(nowX, headY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = C.orange;
+    ctx.fill();
+
+    // Sampled observations along the measured part.
+    for (let i = 0; i < 7; i += 1) {
+      const x = PAD_L + ((nowX - PAD_L) / 7) * (i + 0.5);
+      const y = toY(load(tAt(x)));
+      const twinkle = 0.35 + 0.3 * Math.sin(timestamp / 520 + i * 1.3);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(13, 5, 242, ' + twinkle.toFixed(3) + ')';
+      ctx.fill();
+    }
+
+    // Direct labels, so the two segments never rely on colour alone.
+    ctx.font = '13px ' + FONT;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.ink;
+    ctx.fillText('Observed', PAD_L + 6, PAD_T - 16);
+    ctx.fillStyle = C.orange;
+    ctx.fillText('Forecast', nowX + 10, PAD_T - 16);
+
+    if (running) frame = requestAnimationFrame(draw);
   }
-  return { times, demand, forecast, lo, hi, splitIndex: split };
+
+  /* Only animate while the panel is on screen, the tab is visible, the
+   * overview is the active view and motion is on. An off-screen canvas loop
+   * is wasted battery. */
+  function shouldRun() {
+    return onScreen
+      && !document.hidden
+      && motionOn()
+      && $('view-overview').classList.contains('is-active');
+  }
+
+  function start() {
+    if (running) return;
+    running = true;
+    frame = requestAnimationFrame(draw);
+  }
+  function stop() {
+    running = false;
+    if (frame) cancelAnimationFrame(frame);
+    frame = null;
+  }
+
+  resize();
+  window.addEventListener('resize', () => {
+    resize();
+    if (!running) draw(performance.now());
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else if (shouldRun()) start();
+  });
+  document.querySelectorAll('.nav-link').forEach((link) => {
+    link.addEventListener('click', () => {
+      setTimeout(() => { if (shouldRun()) start(); else stop(); }, 60);
+    });
+  });
+  // The motion switch is the single source of truth for whether this loops.
+  new MutationObserver(() => {
+    if (shouldRun()) start();
+    else { stop(); draw(0); }
+  }).observe(document.documentElement, {
+    attributes: true, attributeFilter: ['data-motion'],
+  });
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((entries) => {
+      onScreen = entries[0].isIntersecting;
+      if (shouldRun()) start(); else stop();
+    }, { threshold: 0.05 }).observe(canvas);
+  }
+
+  if (!motionOn()) draw(0);   // a single static frame, no loop
+  else start();
 }
 
 // --------------------------------------------------------------------------
@@ -905,8 +958,8 @@ async function loadOverview() {
      </div>`,
   ].join('');
 
-  runCountUps($('accuracyStrip'));
-  runCountUps($('findingStrip'));
+  armCountUps($('accuracyStrip'));
+  armCountUps($('findingStrip'));
 
   const series = await api('/api/series?hours=336');
   drawSeries('plotOverviewSeries', series, 'lgbm_calendar_history', true);
@@ -936,26 +989,37 @@ function drawSeries(nodeId, series, comparison, showBand) {
 
   traces.push({
     x: times, y: toGW(col.demand_mw), name: 'Observed',
-    line: { color: C.ink, width: 1.75 },
+    line: { color: C.blue, width: 1.8 },
     hovertemplate: '%{y:.1f} GW<extra>Observed</extra>',
   });
   traces.push({
     x: times, y: toGW(col.lgbm_weather), name: 'Forecast',
-    line: { color: C.amber, width: 1.5 },
+    line: { color: C.orange, width: 1.8, dash: 'dash' },
     hovertemplate: '%{y:.1f} GW<extra>Forecast</extra>',
   });
 
   if (comparison && comparison !== 'none' && col[comparison]) {
     traces.push({
       x: times, y: toGW(col[comparison]), name: nameOf(comparison),
-      line: { color: C.baseline, width: 1.3, dash: 'dash' },
+      line: { color: C.baseline, width: 1.4, dash: 'dot' },
       hovertemplate: `%{y:.1f} GW<extra>${escapeHtml(nameOf(comparison))}</extra>`,
     });
   }
 
+  /* Three series whose lines converge at the right-hand edge, so end labels
+   * would sit on top of each other. A boxless legend across the top-left
+   * identifies each one instead, and the solid/dashed/dotted strokes keep
+   * them apart without relying on colour. */
   drawLines(nodeId, traces, {
+    xaxis: { ...LAYOUT.xaxis, title: { text: 'Date and hour (IST)', font: AXIS.title.font } },
     yaxis: { ...LAYOUT.yaxis, title: { text: 'All-India demand (GW)', font: AXIS.title.font } },
-    margin: { l: 62, r: 24, t: 12, b: 44 },
+    margin: { l: 62, r: 28, t: 44, b: 48 },
+    showlegend: true,
+    legend: {
+      orientation: 'h', x: 0, y: 1.14, xanchor: 'left', yanchor: 'bottom',
+      bgcolor: 'rgba(0,0,0,0)', borderwidth: 0,
+      font: { family: FONT, size: 13, color: C.ink },
+    },
   });
 
   const gaps = (col.lgbm_weather || []).filter((v) => v === null).length;
@@ -994,7 +1058,7 @@ function windowStats(series) {
        <p class="strip-caption">Day that peak fell on</p>
      </div>`,
   ].join('');
-  runCountUps($('windowStats'));
+  armCountUps($('windowStats'));
 }
 
 let RANGE = null;
@@ -1089,18 +1153,19 @@ async function loadHeat() {
     x: rows.map((r) => r.value),
     y: rows.map((r) => r.label),
     marker: {
-      color: rows.map((r) => (r.weather ? (r.hot ? C.heatHot : C.amber) : C.baseline)),
+      color: rows.map((r) => (r.weather ? C.orange : C.baseline)),
       line: { width: 0 },
     },
     text: rows.map((r) => `${fmt(r.value)} MW`),
     textposition: 'outside',
-    textfont: { family: FONT, size: 12, color: C.muted },
+    textfont: { family: FONT, size: 12, color: C.ink },
     cliponaxis: false,
     hovertemplate: '%{y}<br>%{x:,.0f} MW<extra></extra>',
   }], {
     xaxis: lockX({ showgrid: false, title: { text: 'Average error (MW)', font: AXIS.title.font },
       range: [0, Math.max(...rows.map((r) => r.value)) * 1.22] }),
-    yaxis: lockY({ showgrid: false, automargin: true }),
+    yaxis: lockY({ showgrid: false, automargin: true,
+      title: { text: 'Hours and model', font: AXIS.title.font } }),
     margin: { l: 250, r: 32, t: 10, b: 46 },
     hovermode: 'closest',
   }, 'x');
@@ -1150,25 +1215,25 @@ async function loadEvening() {
 
   drawLines('plotDailyProfile', [
     { x: hours, y: toGW(col.demand_mw), name: 'Demand',
-      line: { color: C.ink, width: 1.75 },
+      line: { color: C.blue, width: 1.8 },
       hovertemplate: '%{y:.1f} GW<extra>Demand</extra>' },
     { x: hours, y: toGW(col.residual_load_mw), name: 'Residual load',
-      line: { color: C.amber, width: 1.5 },
+      line: { color: C.orange, width: 1.8, dash: 'dash' },
       hovertemplate: '%{y:.1f} GW<extra>Residual load</extra>' },
     { x: hours, y: toGW(col.solar_mw), name: 'Solar',
-      line: { color: C.baseline, width: 1.3, dash: 'dash' },
+      line: { color: C.blue2, width: 1.5, dash: 'dot' },
       hovertemplate: '%{y:.1f} GW<extra>Solar</extra>' },
     { x: hours, y: toGW(col.wind_mw), name: 'Wind',
-      line: { color: C.baseline, width: 1.3, dash: 'dot' },
+      line: { color: C.baseline, width: 1.5, dash: 'longdash' },
       hovertemplate: '%{y:.1f} GW<extra>Wind</extra>' },
   ], {
     xaxis: lockX({ title: { text: 'Hour of day (IST)', font: AXIS.title.font }, dtick: 3 }),
     yaxis: lockY({ title: { text: 'Power (GW)', font: AXIS.title.font } }),
     margin: { l: 62, r: 118, t: 14, b: 46 },
     annotations: [
-      endLabel(lastHour, col.demand_mw[lastHour] / 1000, 'Demand', C.ink),
-      endLabel(lastHour, col.residual_load_mw[lastHour] / 1000, 'Residual load', C.amber),
-      endLabel(lastHour, col.solar_mw[lastHour] / 1000, 'Solar', C.baseline),
+      endLabel(lastHour, col.demand_mw[lastHour] / 1000, 'Demand', C.blue),
+      endLabel(lastHour, col.residual_load_mw[lastHour] / 1000, 'Residual load', C.orange),
+      endLabel(lastHour, col.solar_mw[lastHour] / 1000, 'Solar', C.blue2),
       endLabel(lastHour, col.wind_mw[lastHour] / 1000, 'Wind', C.baseline),
     ],
   }, CONFIG_BAR);
@@ -1185,7 +1250,7 @@ async function loadEvening() {
        <p class="strip-caption">Hour the steepest climb most often falls in, IST</p>
      </div>`,
   ].join('');
-  runCountUps($('rampStats'));
+  armCountUps($('rampStats'));
 
   await showSaved('plotEveningRamp', 'evening_ramp');
 }
@@ -1281,19 +1346,20 @@ async function loadExplain() {
     x: entries.map(([, v]) => v),
     y: entries.map(([k]) => k),
     marker: {
-      color: entries.map(([k]) => (isWeather(k) ? C.amber : C.baseline)),
+      color: entries.map(([k]) => (isWeather(k) ? C.orange : C.baseline)),
       line: { width: 0 },
     },
     text: entries.map(([, v]) => v.toFixed(3)),
     textposition: 'outside',
-    textfont: { family: FONT, size: 11, color: C.muted },
+    textfont: { family: FONT, size: 11, color: C.ink },
     cliponaxis: false,
     hovertemplate: '%{y}: %{x:.3f}<extra></extra>',
   }], {
     height: 560,
     margin: { l: 230, r: 48, t: 10, b: 46 },
     xaxis: lockX({ showgrid: false, title: { text: 'Share of total split gain', font: AXIS.title.font } }),
-    yaxis: lockY({ showgrid: false, automargin: true }),
+    yaxis: lockY({ showgrid: false, automargin: true,
+      title: { text: 'Model input', font: AXIS.title.font } }),
     hovermode: 'closest',
   }, 'x');
 }
@@ -1427,8 +1493,7 @@ function rebuildMotion() {
   buildScrollProgress();
   const active = document.querySelector('.view.is-active');
   if (active) buildReveals(active.id.replace('view-', ''));
-  // A hero that already played is left in its final state.
-  drawHero();
+  // startHeroViz owns its own motion observer, so the canvas needs nothing here.
 }
 
 // --------------------------------------------------------------------------
@@ -1478,8 +1543,6 @@ function boot() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      sizeHeroCanvas();
-      drawHero();
       const active = document.querySelector('.view.is-active');
       if (active) resizePlots(active.id.replace('view-', ''));
       if (hasGsap()) window.ScrollTrigger.refresh();
@@ -1492,7 +1555,7 @@ function boot() {
   buildScrollProgress();
 
   loadCoverage();
-  loadHeroFigure();
+  startHeroViz();
   showView(viewFromHash());
 }
 

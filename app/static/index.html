@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Solaris Grid Intelligence</title>
 <meta name="description" content="Day-ahead forecasting of India's electricity demand using archived weather forecasts. Research results on a held-out test period.">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,7 +24,10 @@
 
 <header class="topbar" id="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="#overview">Solaris</a>
+    <a class="brand" href="#overview">
+      <img class="brand-mark" src="/logo.svg" alt="" width="28" height="28">
+      <span class="brand-word">Solaris</span>
+    </a>
 
     <nav class="nav" id="nav" aria-label="Sections">
       <button class="nav-link" data-view="overview" aria-current="page">Overview</button>
@@ -64,10 +67,34 @@
 
       <figure class="hero-figure">
         <canvas id="heroCanvas" role="img"
-                aria-label="Observed all-India electricity demand over the final days of the held-out test period, followed by the model's day-ahead forecast and its P10 to P90 range"></canvas>
+                aria-label="Illustration of a load curve observed up to a point in time, then continuing as a forecast with a widening uncertainty range"></canvas>
       </figure>
-      <p class="source-line" id="heroSource"></p>
+      <p class="source-line">Illustrative animation of the forecasting idea. The measured
+      results are below.</p>
     </div>
+
+    <section class="wrap section" aria-labelledby="howHeading">
+      <div class="section-head">
+        <h2 id="howHeading">How it works</h2>
+      </div>
+      <div class="steps" data-sequence>
+        <div class="step">
+          <span class="step-n">Step 1</span>
+          <p>Take tomorrow&rsquo;s weather forecast for India, as it was actually
+          published the day before.</p>
+        </div>
+        <div class="step">
+          <span class="step-n">Step 2</span>
+          <p>Combine it with how much electricity the country used recently, and what
+          day of the week tomorrow is.</p>
+        </div>
+        <div class="step">
+          <span class="step-n">Step 3</span>
+          <p>Predict how much electricity the whole country will need, hour by hour,
+          for every hour of tomorrow.</p>
+        </div>
+      </div>
+    </section>
 
     <section class="wrap section" aria-labelledby="accuracyHeading">
       <div class="section-head">
@@ -205,7 +232,8 @@
 
     <section class="wrap section chart-block">
       <h2>Daily peak demand, predicted against actual</h2>
-      <p class="caption">Each dot is one day. The closer to the diagonal, the better the call.</p>
+      <p class="caption">Each dot is one day of the test period. The closer a dot sits
+      to the dashed diagonal, the closer that day&rsquo;s peak call was.</p>
       <div class="chart" id="plotPeakScatter"><div class="placeholder ph-chart"></div></div>
       <p class="source-line">Source: Grid-India hourly demand via Mendeley, CC BY 4.0; Solaris model output.</p>
     </section>
@@ -239,6 +267,9 @@
 
     <section class="wrap section chart-block">
       <h2>Weather helps more when it is hot</h2>
+      <p class="caption">Average forecast error with and without weather inputs, split
+      by whether the day was hot. Shorter bars are better, and the gap between the two
+      is wider on hot hours.</p>
       <p class="caption" id="hotDefinition"></p>
       <div class="chart" id="plotHotSplit"><div class="placeholder ph-chart"></div></div>
       <div class="table-wrap" data-lenis-prevent-horizontal>
@@ -265,8 +296,9 @@
 
     <section class="wrap section chart-block" data-clip>
       <h2>The average day</h2>
-      <p class="caption">Mean demand, solar, wind and residual load by hour, across the
-      full dataset.</p>
+      <p class="caption">Mean demand, solar, wind and residual load by hour, across
+      the full dataset. Residual load is what conventional plants must cover once solar
+      and wind are subtracted. Watch it climb as solar fades after 17:00.</p>
       <div class="chart chart-tall" id="plotDailyProfile"><div class="placeholder ph-chart"></div></div>
       <p class="source-line">Source: Grid-India hourly demand and generation via Mendeley, CC BY 4.0.</p>
     </section>
@@ -281,7 +313,8 @@
     <section class="wrap section chart-block">
       <h2>When the steepest ramp happens</h2>
       <p class="caption">The hour of the largest single-hour rise in residual load,
-      counted over every complete day.</p>
+      counted over every complete day. The tall bars in the evening are the daily
+      scramble to replace solar as the sun sets.</p>
       <div class="chart" id="plotEveningRamp"><div class="placeholder ph-chart"></div></div>
       <p class="source-line">Source: Grid-India hourly demand and generation via Mendeley, CC BY 4.0.</p>
     </section>
@@ -310,13 +343,14 @@
       <div class="chart-pair">
         <div class="chart-block">
           <h3>Error by hour of day</h3>
-          <p class="caption">Where in the day each model struggles.</p>
+          <p class="caption">Where in the day each model struggles. Lower is better,
+          and the shaded band marks the evening window.</p>
           <div class="chart" id="plotErrorByHour"><div class="placeholder ph-chart"></div></div>
         </div>
         <div class="chart-block">
           <h3>Residuals</h3>
-          <p class="caption">How the errors are distributed, and whether they grow with
-          demand.</p>
+          <p class="caption">How the errors are spread, and whether they grow with
+          demand. A tight, centred distribution with no trend is what you want.</p>
           <div class="chart" id="plotResiduals"><div class="placeholder ph-chart"></div></div>
         </div>
       </div>
@@ -332,9 +366,11 @@
 
     <section class="wrap section chart-block">
       <h2>Uncertainty range calibration</h2>
-      <p class="caption">Whether the forecast range covers the real value as often as it
-      claims to.</p>
+      <p class="caption">Whether the forecast range covers the real value as often as
+      it claims to. Points on the dashed diagonal would be perfectly calibrated. These
+      sit below it, so the range is too narrow.</p>
       <div class="chart" id="plotCalibration"><div class="placeholder ph-chart"></div></div>
+      <p class="source-line">Source: Solaris model output on the held-out test period.</p>
       <div id="calibrationNote"></div>
     </section>
   </section>
@@ -357,8 +393,9 @@
 
     <section class="wrap section chart-block" data-clip>
       <h2>Feature importance, as a share of total split gain</h2>
-      <p class="caption">Weather-derived inputs are shown in amber, everything else in
-      grey.</p>
+      <p class="caption">How much each input contributed to the model&rsquo;s accuracy.
+      Weather-derived inputs are drawn in orange, everything else in grey. Longer bars
+      mean the model leaned on that input more.</p>
       <div class="chart chart-tall" id="plotImportance"><div class="placeholder ph-chart"></div></div>
       <p class="source-line">Source: Solaris model output, LightGBM split gain.</p>
     </section>
@@ -459,17 +496,40 @@ uvicorn app.main:app --reload</code></pre>
 <footer class="footer">
   <div class="wrap">
     <div class="footer-top">
-      <div class="footer-brand">
-        <a class="brand" href="#overview">Solaris</a>
-        <p id="footerCoverage"></p>
+
+      <div class="footer-col">
+        <a class="brand" href="#overview">
+          <img class="brand-mark" src="/logo.svg" alt="" width="28" height="28">
+          <span class="brand-word">Solaris</span>
+        </a>
+        <p>Built by <a href="https://www.linkedin.com/in/dhairya-bhosale-20456a2ab/"
+           target="_blank" rel="noopener noreferrer">Dhairya Bhosale</a></p>
+        <p class="footer-note" id="footerCoverage"></p>
       </div>
-      <div class="footer-links">
-        <a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener">Grid-India data, Mendeley, CC BY 4.0</a>
-        <a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather by Open-Meteo, CC BY 4.0</a>
+
+      <div class="footer-col">
+        <h4>The project</h4>
+        <p>A machine learning system that predicts how much electricity the whole of
+        India will use, hour by hour, one day in advance. Built and tested on two and a
+        half years of real grid measurements from Grid-India.</p>
+        <ul class="footer-list" style="margin-top:14px">
+          <li><a href="https://github.com/dhairyabhosale/solaris" target="_blank" rel="noopener noreferrer">Source code on GitHub</a></li>
+        </ul>
       </div>
+
+      <div class="footer-col">
+        <h4>Data and contact</h4>
+        <ul class="footer-list">
+          <li><a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener noreferrer">Grid-India data, Mendeley, CC BY 4.0</a></li>
+          <li><a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather by Open-Meteo, CC BY 4.0</a></li>
+        </ul>
+        <a class="contact-btn" href="https://www.linkedin.com/in/dhairya-bhosale-20456a2ab/"
+           target="_blank" rel="noopener noreferrer">Contact on LinkedIn</a>
+      </div>
+
     </div>
     <div class="footer-bottom">
-      <a href="https://github.com/dhairyabhosale/solaris" target="_blank" rel="noopener">Source code on GitHub</a>
+      <span>Solaris, built by Dhairya Bhosale</span>
       <button class="motion-toggle" id="motionToggle" aria-pressed="true"
               aria-label="Turn page motion off">Motion on</button>
     </div>
