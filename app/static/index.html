@@ -50,27 +50,30 @@
   <section class="view is-active" id="view-overview">
 
     <div class="wrap hero">
-      <h1>
-        <span class="line-mask"><span class="reveal-line">Predicting tomorrow&rsquo;s electricity demand</span></span>
-        <span class="line-mask"><span class="reveal-line">from today&rsquo;s weather forecast.</span></span>
-      </h1>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>
+            <span class="line-mask"><span class="reveal-line">Predicting tomorrow&rsquo;s electricity demand</span></span>
+            <span class="line-mask"><span class="reveal-line">from today&rsquo;s weather forecast.</span></span>
+          </h1>
+          <p class="lede">
+            India&rsquo;s grid operators must decide today how much power to generate for
+            every hour of tomorrow. Get it wrong and you either waste money or risk
+            blackouts. Solaris tests whether the weather forecast makes that decision
+            measurably better.
+          </p>
+          <div class="hero-meta" id="heroMeta" data-reveal></div>
+        </div>
 
-      <div class="grid12 hero-cols">
-        <p class="lede c1-6">
-          India&rsquo;s grid operators must decide today how much power to generate for
-          every hour of tomorrow. Get it wrong and you either waste money or risk
-          blackouts. Solaris tests whether the weather forecast makes that decision
-          measurably better.
-        </p>
-        <div class="hero-meta c8-12" id="heroMeta" data-reveal></div>
-      </div>
-
+        <div class="hero-visual">
       <figure class="hero-figure">
         <canvas id="heroCanvas" role="img"
                 aria-label="Illustration of a load curve observed up to a point in time, then continuing as a forecast with a widening uncertainty range"></canvas>
       </figure>
-      <p class="source-line">Illustrative animation of the forecasting idea. The measured
-      results are below.</p>
+      <p class="source-line">Illustrative animation of the forecasting idea. The
+      measured results are below.</p>
+        </div>
+      </div>
     </div>
 
     <section class="wrap section" aria-labelledby="howHeading">
@@ -107,9 +110,8 @@
     </section>
 
     <section class="wrap section" aria-labelledby="whatHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="whatHeading">What this is</h2></div>
-        <div class="c7-12">
+      <div class="section-head"><h2 id="whatHeading">What this is</h2></div>
+      <div class="section-body">
           <p class="explain-body">
             <span class="run-in">What it is.</span> A machine learning system that
             predicts how much electricity the whole of India will use, hour by hour, one
@@ -129,13 +131,11 @@
             less risk of falling short on a hot evening.
           </p>
         </div>
-      </div>
     </section>
 
     <section class="wrap section" aria-labelledby="usedHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="usedHeading">How it gets used</h2></div>
-        <div class="c7-12">
+      <div class="section-head"><h2 id="usedHeading">How it gets used</h2></div>
+      <div class="section-body">
           <dl class="deflist" data-sequence>
             <div class="def-row">
               <dt class="def-term">Grid operators</dt>
@@ -167,7 +167,6 @@
             should despatch a power station on them.
           </p>
         </div>
-      </div>
     </section>
 
     <section class="wrap section" aria-labelledby="findingHeading">
@@ -358,10 +357,8 @@
     </section>
 
     <section class="wrap section" aria-labelledby="extrapHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="extrapHeading">A negative result worth keeping</h2></div>
-        <div class="c7-12" id="extrapolationBody"></div>
-      </div>
+      <div class="section-head"><h2 id="extrapHeading">A negative result worth keeping</h2></div>
+      <div class="section-body" id="extrapolationBody"></div>
     </section>
 
     <section class="wrap section chart-block">
@@ -410,20 +407,16 @@
     </div>
 
     <section class="wrap section" aria-labelledby="taskHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="taskHeading">The forecasting task</h2></div>
-        <div class="c7-12">
+      <div class="section-head"><h2 id="taskHeading">The forecasting task</h2></div>
+      <div class="section-body">
           <p class="prose" id="methodConvention"></p>
           <div id="splitTable" style="margin-top:32px"></div>
         </div>
-      </div>
     </section>
 
     <section class="wrap section" aria-labelledby="sourcesHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="sourcesHeading">Data sources</h2></div>
-        <div class="c7-12" id="sourceList"></div>
-      </div>
+      <div class="section-head"><h2 id="sourcesHeading">Data sources</h2></div>
+      <div class="section-body" id="sourceList"></div>
     </section>
 
     <section class="wrap section">
@@ -441,16 +434,13 @@
     </section>
 
     <section class="wrap section" aria-labelledby="limitsHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="limitsHeading">Limitations</h2></div>
-        <div class="c7-12"><ul class="limitations" id="limitationList"></ul></div>
-      </div>
+      <div class="section-head"><h2 id="limitsHeading">Limitations</h2></div>
+      <div class="section-body"><ul class="limitations" id="limitationList"></ul></div>
     </section>
 
     <section class="wrap section" aria-labelledby="reproHeading">
-      <div class="grid12">
-        <div class="c1-5"><h2 id="reproHeading">Reproduce it yourself</h2></div>
-        <div class="c7-12">
+      <div class="section-head"><h2 id="reproHeading">Reproduce it yourself</h2></div>
+      <div class="section-body">
           <ol class="deflist" data-sequence style="list-style:none;padding:0;margin:0">
             <li class="def-row">
               <span class="def-term">1. Install</span>
@@ -487,7 +477,6 @@ uvicorn app.main:app --reload</code></pre>
           <p class="prose">Every figure and table on this site is read from the files
           those commands write. Nothing here is typed in by hand.</p>
         </div>
-      </div>
     </section>
   </section>
 
@@ -518,20 +507,13 @@ uvicorn app.main:app --reload</code></pre>
       </div>
 
       <div class="footer-col">
-        <h4>Data and contact</h4>
+        <h4>Data sources</h4>
         <ul class="footer-list">
           <li><a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener noreferrer">Grid-India data, Mendeley, CC BY 4.0</a></li>
           <li><a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather by Open-Meteo, CC BY 4.0</a></li>
         </ul>
-        <a class="contact-btn" href="https://www.linkedin.com/in/dhairya-bhosale-20456a2ab/"
-           target="_blank" rel="noopener noreferrer">Contact on LinkedIn</a>
       </div>
 
-    </div>
-    <div class="footer-bottom">
-      <span>Solaris, built by Dhairya Bhosale</span>
-      <button class="motion-toggle" id="motionToggle" aria-pressed="true"
-              aria-label="Turn page motion off">Motion on</button>
     </div>
   </div>
 </footer>

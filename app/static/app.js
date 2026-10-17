@@ -148,25 +148,16 @@ function stripCell(value, unit, caption, decimals, lead) {
 const reduceQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 const pointerQuery = window.matchMedia('(pointer: fine)');
 
+/* Motion follows the reader's own operating-system preference. There is no
+ * in-page switch: the site has one honest answer to "should this move?", and
+ * it is the one the reader already gave their device. */
 function resolveMotion() {
-  if (sessionStorage.getItem('motion') === 'off') return 'off';
-  if (reduceQuery.matches) return 'off';
-  return 'on';
+  return reduceQuery.matches ? 'off' : 'on';
 }
 const motionOn = () => document.documentElement.dataset.motion === 'on';
 
 function applyMotionAttr() {
   document.documentElement.dataset.motion = resolveMotion();
-  syncMotionToggle();
-}
-
-function syncMotionToggle() {
-  const button = $('motionToggle');
-  if (!button) return;
-  const on = motionOn();
-  button.setAttribute('aria-pressed', String(on));
-  button.textContent = on ? 'Motion on' : 'Motion off';
-  button.setAttribute('aria-label', on ? 'Turn page motion off' : 'Turn page motion on');
 }
 
 const hasGsap = () => typeof window.gsap !== 'undefined' && typeof window.ScrollTrigger !== 'undefined';
@@ -724,7 +715,7 @@ function startHeroViz() {
   const PAD_L = 18;
   const PAD_R = 18;
   const PAD_T = 34;
-  const PAD_B = 24;
+  const PAD_B = 34;
 
   function draw(timestamp) {
     const phase = timestamp / 5200;
@@ -771,6 +762,22 @@ function startHeroViz() {
     ctx.fillStyle = C.amberBand;
     ctx.fill();
 
+    // A soft fill under the observed curve, so the measured side reads as
+    // settled fact against the open-ended forecast.
+    const fill = ctx.createLinearGradient(0, PAD_T, 0, PAD_T + plotH);
+    fill.addColorStop(0, 'rgba(99, 121, 242, 0.16)');
+    fill.addColorStop(1, 'rgba(99, 121, 242, 0.01)');
+    ctx.beginPath();
+    ctx.moveTo(PAD_L, PAD_T + plotH);
+    for (let i = 0; i <= steps; i += 1) {
+      const x = PAD_L + ((nowX - PAD_L) * i) / steps;
+      ctx.lineTo(x, toY(load(tAt(x))));
+    }
+    ctx.lineTo(nowX, PAD_T + plotH);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+
     // Observed segment, running from the secondary blue into near-black.
     const stroke = ctx.createLinearGradient(PAD_L, 0, nowX, 0);
     stroke.addColorStop(0, C.blue2);
@@ -797,6 +804,41 @@ function startHeroViz() {
     }
     ctx.stroke();
     ctx.restore();
+
+    // Forecast sample points, spaced like hourly steps ahead.
+    for (let i = 1; i <= 6; i += 1) {
+      const x = nowX + (aheadW / 6.4) * i;
+      if (x > width - PAD_R - 2) break;
+      ctx.beginPath();
+      ctx.arc(x, toY(load(tAt(x))), 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(242, 68, 5, 0.55)';
+      ctx.fill();
+    }
+
+    // The evening peak the project is about: find the highest forecast point
+    // and mark it with a light guide line.
+    let peakX = nowX;
+    let peakV = -Infinity;
+    for (let i = 0; i <= steps; i += 1) {
+      const x = nowX + (aheadW * i) / steps;
+      const v = load(tAt(x));
+      if (v > peakV) { peakV = v; peakX = x; }
+    }
+    const peakY = toY(peakV);
+    ctx.save();
+    ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = 'rgba(242, 68, 5, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD_L, peakY); ctx.lineTo(peakX, peakY); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(peakX, peakY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = C.orange;
+    ctx.fill();
+    ctx.font = '11px ' + FONT;
+    ctx.fillStyle = C.muted;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('expected peak', Math.min(peakX + 7, width - PAD_R - 74), peakY - 7);
 
     // The forecast-issue moment.
     ctx.save();
@@ -831,13 +873,24 @@ function startHeroViz() {
       ctx.fill();
     }
 
+    // A slow sweep across the measured side, the way a monitor refreshes.
+    const sweep = PAD_L + ((timestamp / 24) % (nowX - PAD_L));
+    const beam = ctx.createLinearGradient(sweep - 46, 0, sweep, 0);
+    beam.addColorStop(0, 'rgba(99, 121, 242, 0)');
+    beam.addColorStop(1, 'rgba(99, 121, 242, 0.16)');
+    ctx.fillStyle = beam;
+    ctx.fillRect(sweep - 46, PAD_T, 46, plotH);
+
     // Direct labels, so the two segments never rely on colour alone.
     ctx.font = '13px ' + FONT;
     ctx.textBaseline = 'middle';
     ctx.fillStyle = C.ink;
-    ctx.fillText('Observed', PAD_L + 6, PAD_T - 16);
+    ctx.fillText('Observed', PAD_L + 4, PAD_T - 15);
     ctx.fillStyle = C.orange;
-    ctx.fillText('Forecast', nowX + 10, PAD_T - 16);
+    ctx.fillText('Forecast', nowX + 9, PAD_T - 15);
+    ctx.font = '11px ' + FONT;
+    ctx.fillStyle = C.muted;
+    ctx.fillText('forecast issued', nowX - 92, PAD_T + plotH + 12);
 
     if (running) frame = requestAnimationFrame(draw);
   }
@@ -1515,15 +1568,8 @@ function boot() {
     el.addEventListener('click', (event) => { event.preventDefault(); showView('overview'); });
   });
 
-  $('motionToggle').addEventListener('click', () => {
-    const next = motionOn() ? 'off' : 'on';
-    sessionStorage.setItem('motion', next);
-    applyMotionAttr();
-  });
-
   // One observer is the single reaction point for every motion change.
   new MutationObserver(() => {
-    syncMotionToggle();
     if (motionOn()) rebuildMotion();
     else teardownMotion();
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
