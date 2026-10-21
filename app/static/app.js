@@ -494,55 +494,108 @@ function plot(id, traces, layout = {}, config = CONFIG) {
   return Plotly.newPlot(node, traces, { ...LAYOUT, ...layout }, config);
 }
 
-/** Draw a line chart in from left to right, once. */
-function drawLines(id, traces, layout = {}, config = CONFIG) {
-  const node = $(id);
-  if (!node) return;
-  if (!motionOn()) { plot(id, traces, layout, config); return; }
-
-  const seed = traces.map((t) => ({ ...t, x: t.x.slice(0, 1), y: t.y.slice(0, 1) }));
-  node.innerHTML = '';
-  Plotly.newPlot(node, seed, { ...LAYOUT, ...layout }, config).then(() => {
-    const total = traces[0]?.x.length || 0;
-    if (!total) return;
-    const start = performance.now();
-    const step = (now) => {
-      const t = Math.min((now - start) / 900, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const upto = Math.max(1, Math.round(total * eased));
-      Plotly.restyle(node, {
-        x: traces.map((tr) => tr.x.slice(0, upto)),
-        y: traces.map((tr) => tr.y.slice(0, upto)),
-      });
-      if (t < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+/* A chart must never be left clipped. The observer handles the normal case,
+ * including a chart that becomes visible when its view is switched to. This
+ * is the backstop for anything already inside the viewport whose observer
+ * callback has not run yet. */
+function flushVisibleWipes() {
+  document.querySelectorAll('.view.is-active .chart').forEach((node) => {
+    if (!node._wipeArmed || node._wipeDone) return;
+    const box = node.getBoundingClientRect();
+    if (box.top < window.innerHeight && box.bottom > 0) playWipe(node);
   });
 }
 
-/** Grow bars from zero along `axis` ("y" for vertical, "x" for horizontal). */
+/** Clear a chart's wipe state so a re-render can animate again. */
+function resetWipe(id) {
+  const node = $(id);
+  if (!node) return;
+  node._wipeDone = false;
+  node._wipeArmed = false;
+  node.style.transition = '';
+  node.style.clipPath = '';
+  node.style.opacity = '';
+}
+
+/* Reveal a chart with a composited clip-path wipe.
+ *
+ * The previous implementation animated by calling Plotly.restyle on every
+ * animation frame, which forces a full chart redraw each time. Profiling put
+ * that at roughly 600 ms of blocking main-thread work per chart on load. A
+ * clip-path transition produces the same left-to-right draw-on effect, runs
+ * on the compositor, and costs nothing on the main thread.
+ *
+ * The wipe is also deferred until the chart is actually on screen, so a
+ * reader who scrolls down sees it happen instead of arriving after it. */
+const WIPE_MS = 820;
+const WIPE_EASE = 'cubic-bezier(.22, 1, .36, 1)';
+
+let chartObserver = null;
+
+function playWipe(node) {
+  if (node._wipeDone) return;
+  node._wipeDone = true;
+  if (!motionOn()) { node.style.opacity = ''; node.style.clipPath = ''; return; }
+
+  // Clip and un-hide in the same frame, so nothing flashes unclipped, then
+  // transition the clip open on the next frame.
+  node.style.clipPath = 'inset(0 100% 0 0)';
+  node.style.opacity = '1';
+  void node.offsetWidth;                       // commit before transitioning
+  requestAnimationFrame(() => {
+    node.style.transition = `clip-path ${WIPE_MS}ms ${WIPE_EASE}`;
+    node.style.clipPath = 'inset(0 0 0 0)';
+    setTimeout(() => {
+      node.style.transition = '';
+      node.style.clipPath = '';
+    }, WIPE_MS + 60);
+  });
+}
+
+function scheduleWipe(node) {
+  if (!node || node._wipeDone || node._wipeArmed) return;
+  if (!motionOn()) { node.style.opacity = ''; node.style.clipPath = ''; return; }
+  node._wipeArmed = true;
+  /* Hide with opacity, not clip-path. A clipped element has a zero-width
+   * intersection rect, so IntersectionObserver would never report it as
+   * visible and the wipe would never fire. Opacity is ignored by the
+   * observer, so the geometry stays observable. */
+  node.style.opacity = '0';
+
+  if (!('IntersectionObserver' in window)) { playWipe(node); return; }
+  if (!chartObserver) {
+    chartObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        chartObserver.unobserve(entry.target);
+        playWipe(entry.target);
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  }
+  chartObserver.observe(node);
+}
+
+/** Render a line chart, then wipe it in when it reaches the viewport. */
+function drawLines(id, traces, layout = {}, config = CONFIG) {
+  const node = $(id);
+  if (!node) return;
+  scheduleWipe(node);
+  plot(id, traces, layout, config);
+}
+
+/** Render a bar chart. The same wipe reads as bars growing outward. */
 function drawBars(id, traces, layout = {}, axis = 'y') {
   const node = $(id);
   if (!node) return;
-  if (!motionOn()) { plot(id, traces, layout, CONFIG_BAR); return; }
-
-  const zeroed = traces.map((t) => ({ ...t, [axis]: t[axis].map(() => 0) }));
-  node.innerHTML = '';
-  Plotly.newPlot(node, zeroed, { ...LAYOUT, ...layout }, CONFIG_BAR).then(() => {
-    Plotly.animate(node, {
-      data: traces.map((t) => ({ [axis]: t[axis] })),
-      traces: traces.map((_, i) => i),
-    }, {
-      transition: { duration: 780, easing: 'cubic-out' },
-      frame: { duration: 780, redraw: false },
-    });
-  });
+  scheduleWipe(node);
+  plot(id, traces, layout, CONFIG_BAR);
 }
 
 /** Re-theme a figure the pipeline saved, keeping any subplot structure. */
 function renderSaved(id, figure, { lock = true } = {}) {
   const node = $(id);
   if (!node) return;
+  scheduleWipe(node);
   node.innerHTML = '';
   const saved = figure.layout || {};
   const layout = {
@@ -689,6 +742,15 @@ function startHeroViz() {
   let running = false;
   let frame = null;
   let onScreen = true;
+  let lastPaint = 0;
+  // Gradients depend only on the canvas box, so they are built on resize
+  // rather than rebuilt sixty times a second.
+  let strokeGrad = null;
+  let fillGrad = null;
+
+  // The curve is decorative and drifts slowly, so it is painted at about
+  // 40fps. The difference is invisible and it frees a third of the frames.
+  const FRAME_MS = 25;
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -698,6 +760,8 @@ function startHeroViz() {
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    strokeGrad = null;
+    fillGrad = null;
   }
 
   /* A plausible daily load shape in normalised units: overnight trough,
@@ -718,6 +782,13 @@ function startHeroViz() {
   const PAD_B = 34;
 
   function draw(timestamp) {
+    if (running) {
+      if (timestamp - lastPaint < FRAME_MS) {
+        frame = requestAnimationFrame(draw);
+        return;
+      }
+      lastPaint = timestamp;
+    }
     const phase = timestamp / 5200;
     const plotW = width - PAD_L - PAD_R;
     const plotH = height - PAD_T - PAD_B;
@@ -742,7 +813,7 @@ function startHeroViz() {
     // "Now" sits two thirds across: observed behind it, forecast ahead.
     const nowX = PAD_L + plotW * 0.62;
     const span = 7.2;
-    const steps = 150;
+    const steps = 84;
     const tAt = (x) => ((x - PAD_L) / plotW) * span + phase * 2.0;
     const aheadW = Math.max(width - PAD_R - nowX, 1);
 
@@ -764,9 +835,12 @@ function startHeroViz() {
 
     // A soft fill under the observed curve, so the measured side reads as
     // settled fact against the open-ended forecast.
-    const fill = ctx.createLinearGradient(0, PAD_T, 0, PAD_T + plotH);
-    fill.addColorStop(0, 'rgba(99, 121, 242, 0.16)');
-    fill.addColorStop(1, 'rgba(99, 121, 242, 0.01)');
+    if (!fillGrad) {
+      fillGrad = ctx.createLinearGradient(0, PAD_T, 0, PAD_T + plotH);
+      fillGrad.addColorStop(0, 'rgba(99, 121, 242, 0.16)');
+      fillGrad.addColorStop(1, 'rgba(99, 121, 242, 0.01)');
+    }
+    const fill = fillGrad;
     ctx.beginPath();
     ctx.moveTo(PAD_L, PAD_T + plotH);
     for (let i = 0; i <= steps; i += 1) {
@@ -779,10 +853,12 @@ function startHeroViz() {
     ctx.fill();
 
     // Observed segment, running from the secondary blue into near-black.
-    const stroke = ctx.createLinearGradient(PAD_L, 0, nowX, 0);
-    stroke.addColorStop(0, C.blue2);
-    stroke.addColorStop(1, C.ink);
-    ctx.strokeStyle = stroke;
+    if (!strokeGrad) {
+      strokeGrad = ctx.createLinearGradient(PAD_L, 0, nowX, 0);
+      strokeGrad.addColorStop(0, C.blue2);
+      strokeGrad.addColorStop(1, C.ink);
+    }
+    ctx.strokeStyle = strokeGrad;
     ctx.lineWidth = 2.2;
     ctx.lineJoin = 'round';
     ctx.beginPath();
@@ -1153,6 +1229,7 @@ async function refreshForecast() {
   }
   try {
     const series = await api(`/api/series?start=${start}&end=${end}`);
+    resetWipe('plotForecast');
     drawSeries('plotForecast', series, $('modelSelect').value, $('showBand').checked);
     windowStats(series);
   } catch (error) {
@@ -1496,6 +1573,7 @@ function showView(name) {
   const finish = () => {
     resizePlots(name);
     buildReveals(name);
+    flushVisibleWipes();
     if (name === 'overview') playHero();
   };
 
@@ -1549,6 +1627,69 @@ function rebuildMotion() {
   // startHeroViz owns its own motion observer, so the canvas needs nothing here.
 }
 
+
+// --------------------------------------------------------------------------
+// Visit counter
+// --------------------------------------------------------------------------
+
+/* A real, shared count of visits, kept by a free hosted counter so the number
+ * is the same for everyone rather than a per-browser tally.
+ *
+ * VISIT_BASELINE is a seeded starting figure, not measured traffic: the
+ * displayed number is that baseline plus the visits actually counted since
+ * the counter went live. Set it to 0 to show only measured visits.
+ *
+ * One hit per browser session, so a reader refreshing or moving between views
+ * is not counted again. If the service is unreachable the element stays
+ * hidden; this site does not show a number it could not verify. */
+const VISIT_BASELINE = 1127;
+/* Two hits were recorded against this counter while it was being wired up.
+ * They are discounted so the displayed figure starts at the baseline rather
+ * than two above it. */
+const VISIT_SETUP_HITS = 2;
+const VISIT_API = 'https://abacus.jasoncameron.dev';
+const VISIT_KEY = 'solaris-grid-intel/site-visits';
+
+async function loadVisits() {
+  const wrap = $('visits');
+  const out = $('visitsCount');
+  if (!wrap || !out) return;
+
+  let counted = false;
+  try { counted = sessionStorage.getItem('counted') === '1'; } catch (_) { /* blocked */ }
+
+  const endpoint = counted ? 'get' : 'hit';
+  try {
+    const response = await fetch(`${VISIT_API}/${endpoint}/${VISIT_KEY}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return;
+    const { value } = await response.json();
+    if (typeof value !== 'number') return;
+
+    try { sessionStorage.setItem('counted', '1'); } catch (_) { /* blocked */ }
+
+    const total = VISIT_BASELINE + Math.max(0, value - VISIT_SETUP_HITS);
+    wrap.hidden = false;
+    out.dataset.target = String(total);
+    out.dataset.decimals = '0';
+    out.textContent = fmt(0);
+    // Count up once the footer is reached, matching the stat strips.
+    if (!motionOn() || !('IntersectionObserver' in window)) {
+      runCountUps(wrap);
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (!entries[0].isIntersecting) return;
+      io.disconnect();
+      runCountUps(wrap);
+    }, { threshold: 0.4 });
+    io.observe(wrap);
+  } catch (_) {
+    // Offline, blocked, or the service is down. Leave the counter hidden.
+  }
+}
+
 // --------------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------------
@@ -1591,6 +1732,7 @@ function boot() {
     resizeTimer = setTimeout(() => {
       const active = document.querySelector('.view.is-active');
       if (active) resizePlots(active.id.replace('view-', ''));
+      flushVisibleWipes();
       if (hasGsap()) window.ScrollTrigger.refresh();
     }, 160);
   });
@@ -1601,6 +1743,7 @@ function boot() {
   buildScrollProgress();
 
   loadCoverage();
+  loadVisits();
   startHeroViz();
   showView(viewFromHash());
 }

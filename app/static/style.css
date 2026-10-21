@@ -585,6 +585,29 @@ a:hover { color: var(--blue-2); text-decoration-color: var(--blue-2); }
 .footer-note { font-size: 14px !important; color: var(--muted) !important; }
 
 .footer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+
+/* Visit counter. Hidden until a real count arrives, so a failed request
+   shows nothing rather than a placeholder number. */
+.visits {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.visits-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--orange); align-self: center;
+  animation: visitPulse 2.6s ease-out infinite;
+}
+@keyframes visitPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(242, 68, 5, .45); }
+  70%  { box-shadow: 0 0 0 7px rgba(242, 68, 5, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(242, 68, 5, 0); }
+}
+.visits-num {
+  font-stretch: 72%; font-weight: 600; font-size: 26px;
+  line-height: 1; letter-spacing: -.02em; color: var(--ink);
+}
+.visits-label { font-size: 13px; color: var(--muted); }
 .footer-list a { font-size: 14px; }
 
 

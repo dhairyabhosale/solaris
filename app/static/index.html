@@ -12,7 +12,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vendor/lenis.css">
 <link rel="stylesheet" href="/style.css">
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<!-- The cartesian bundle carries scatter, scattergl, bar and histogram, which is
+     every trace type this site plots, at 1.36 MB instead of 4.56 MB. Deferred so
+     it no longer blocks first paint; app.js is deferred too and runs after it. -->
+<script src="https://cdn.plot.ly/plotly-cartesian-2.35.2.min.js" charset="utf-8" defer></script>
 <script src="/vendor/lenis.min.js" defer></script>
 <script src="/vendor/gsap.min.js" defer></script>
 <script src="/vendor/ScrollTrigger.min.js" defer></script>
@@ -512,6 +515,11 @@ uvicorn app.main:app --reload</code></pre>
           <li><a href="https://data.mendeley.com/datasets/y58jknpgs8" target="_blank" rel="noopener noreferrer">Grid-India data, Mendeley, CC BY 4.0</a></li>
           <li><a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather by Open-Meteo, CC BY 4.0</a></li>
         </ul>
+        <div class="visits" id="visits" hidden>
+          <span class="visits-dot" aria-hidden="true"></span>
+          <span class="visits-num num" id="visitsCount">0</span>
+          <span class="visits-label">visits</span>
+        </div>
       </div>
 
     </div>
